@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  db:
+    build:
+      context: ./infra/postgres-dev
+    container_name: nectaid-db
+    environment:
+      POSTGRES_USER: nectaid
+      POSTGRES_PASSWORD: dev_password_change_in_prod
+      POSTGRES_DB: nectaid
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nectaid"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - nectaid-net
+
+  api:
+    build:
+      context: ./services/core-api
+    container_name: nectaid-api
+    environment:
+      DATABASE_URL: postgresql+asyncpg://nectaid:dev_password_change_in_prod@db:5432/nectaid
+      PROJECT_ID: nectaid-dev
+      REGION: asia-south1
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./services/core-api/app:/app/app
+    networks:
+      - nectaid-net
+
+volumes:
+  pgdata:
+
+networks:
+  nectaid-net:
+    driver: bridge

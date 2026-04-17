@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          cd services/core-api
+          pip install -r requirements.txt
+          pip install ruff mypy pytest
+      - name: Lint
+        run: |
+          cd services/core-api
+          ruff check app/
+      - name: Type check
+        run: |
+          cd services/core-api
+          mypy app/ --ignore-missing-imports
+
+  frontend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check frontend exists
+        run: |
+          if [ -f "apps/web/package.json" ]; then
+            cd apps/web && npm ci && npm run lint && npm run build
+          else
+            echo "Frontend not yet scaffolded - skipping"
+          fi
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t nectaid-api services/core-api
+      - name: Build DB image
+        run: docker build -t nectaid-db infra/postgres-dev
