@@ -1,120 +1,81 @@
 # Day 1 Sprint Plan: Project Setup & GitHub Push
 
-**Date:** April 17, 2026 (Thursday)  
-**Duration:** 8 hours  
-**Team Size:** 3-5 people  
-**Goal:** Everyone can `git clone`, `docker compose up`, and see a working local environment by end of day
+**Date:** April 17, 2026 (Thursday)
+**Status:** ✅ COMPLETED
 
 ---
 
-## Pre-Sprint Checklist (Team Lead Only - 1 hour)
+## What Was Actually Done
 
-### Task 1.0: GCP Project & Credentials
-**Owner:** DevOps lead  
-**Duration:** 30 min  
-**Deliverable:** Project ID, billing enabled, free credits claimed
+### GCP & Firebase
+- GCP project created, billing linked, free credits claimed
+- 12 APIs enabled (run.googleapis.com, aiplatform.googleapis.com, etc.)
+- Firebase project created, Email/Password auth enabled
+- `firebase-service-account.json` generated and gitignored
 
-```bash
-export PROJECT_ID="nectaid-prod"
-export REGION="asia-south1"
+### Backend
+- FastAPI scaffold in `services/core-api/app/`
+- `requirements.txt` with all dependencies including `psycopg2-binary` for Alembic
+- SQLAlchemy 2.0 async models written for all 9 tables:
+  - `orgs`, `users`, `volunteer_profiles`, `availability_slots`
+  - `raw_submissions`, `needs`, `assignments`
+  - `notifications`, `audit_log`
+- Alembic initialized and configured:
+  - `alembic.ini` points to `postgresql+psycopg2://` (sync, for migrations)
+  - `alembic/env.py` imports all models via `Base.metadata`
+  - `alembic/versions/` is volume-mounted so migration files persist on host
+- Initial migration generated and applied — all tables created in DB
 
-gcloud projects create $PROJECT_ID --name="Nectaid"
-gcloud config set project $PROJECT_ID
-gcloud billing projects link $PROJECT_ID --billing-account=YOUR_BILLING_ID
-```
+### Database
+- Custom Postgres image built from `infra/postgres-dev/Dockerfile`
+  - Based on `pgvector/pgvector:pg16` with PostGIS installed on top
+  - `init.sql` enables: `uuid-ossp`, `pgcrypto`, `postgis`, `vector`
+- `docker-compose.yml` has two services: `db` and `api`
+  - `db` waits for healthcheck before `api` starts
+  - `alembic/` directory volume-mounted into api container
 
-**Exit Criteria:** `gcloud config get-value project` returns `nectaid-prod`
+### Frontend
+- Next.js 15 scaffold in `apps/web/`
+- Tailwind CSS v4 configured (CSS-first, no `tailwind.config.js`)
+- Not in docker-compose yet — runs via `npm run dev` locally
 
-### Task 1.1: Enable APIs (All at Once)
-**Duration:** 5 min (actual) + 10 min (propagation wait)
-
-```bash
-gcloud services enable \
-  run.googleapis.com \
-  cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com \
-  sqladmin.googleapis.com \
-  aiplatform.googleapis.com \
-  firestore.googleapis.com \
-  storage.googleapis.com \
-  pubsub.googleapis.com \
-  secretmanager.googleapis.com \
-  cloudscheduler.googleapis.com \
-  firebase.googleapis.com \
-  identitytoolkit.googleapis.com
-```
-
-**Exit Criteria:** All 12 APIs show "Enabled" in console
-
-### Task 1.2: Create Firebase Project
-**Duration:** 15 min  
-1. Go to https://console.firebase.google.com
-2. Add project → select existing GCP project `nectaid-prod`
-3. Authentication → Sign-in method → Enable Email/Password + Google
-4. Project Settings → Service Accounts → Generate new private key
-5. Save as `firebase-service-account.json` (gitignored — NEVER commit)
+### CI/CD
+- GitHub Actions workflow stubbed in `.github/workflows/`
 
 ---
 
-## Sprint Tasks
+## Key Decisions Made
 
-### Task 2.1: Backend Scaffold ✅ (Done in setup)
-FastAPI app running on port 8080 with health endpoint.
-
-### Task 2.2: Frontend Scaffold
-**Owner:** Frontend lead  
-**Duration:** 2 hours
-
-```bash
-cd apps/web
-npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --import-alias "@/*"
-npm install @tanstack/react-query zod react-hook-form @hookform/resolvers \
-  next-intl firebase leaflet react-leaflet date-fns lucide-react clsx
-```
-
-Add to `next.config.js`:
-```javascript
-const nextConfig = { output: 'standalone' }
-module.exports = nextConfig
-```
-
-**Exit Criteria:** `npm run dev` shows Next.js on localhost:3000
-
-### Task 2.3: Database Setup ✅ (Done in setup)
-Custom Postgres image with pgvector + PostGIS, docker-compose configured.
-
-### Task 2.4: Database Schema (Alembic)
-**Owner:** Backend lead  
-**Duration:** 1.5 hours
-
-```bash
-# Inside running API container:
-docker compose exec api alembic init alembic
-# Edit alembic.ini: set sqlalchemy.url
-docker compose exec api alembic revision -m "initial_schema"
-# Paste schema from docs/03_database_schema.md into the migration
-docker compose exec api alembic upgrade head
-```
-
-**Exit Criteria:** `alembic upgrade head` runs, all tables visible via `\dt`
-
-### Task 2.5: CI/CD ✅ (Done in setup)
-GitHub Actions workflow in `.github/workflows/ci.yml`
+| Decision | Reason |
+|---|---|
+| Alembic uses `psycopg2` not `asyncpg` | Alembic is sync; app runtime uses asyncpg |
+| `COPY . .` in Dockerfile (not just `app/`) | Alembic needs `alembic.ini` and `alembic/` inside the container |
+| `alembic/` volume-mounted in docker-compose | Migration files generated in container appear on host and get committed |
+| `ivfflat lists=10` not 100 | `lists=100` requires 300+ rows minimum; will increase post-MVP |
+| Frontend not dockerized yet | No need until staging deploy; runs fine with `npm run dev` |
 
 ---
 
-## End-of-Day Checklist
+## To Onboard a New Team Member
 
-- [ ] `docker compose up --build` — all services healthy
-- [ ] `curl http://localhost:8080/health` returns `{"status":"ok",...}`
-- [ ] `docker compose exec db psql -U nectaid -c '\dx'` shows 4 extensions
-- [ ] Push to `dev` branch, CI passes
-- [ ] No secrets in git: `git log --all --oneline` shows no .env files
+```bash
+git clone https://github.com/Hemil087/Nectaid.git
+cd Nectaid
+cp services/core-api/.env.example services/core-api/.env.local
+cp apps/web/.env.example apps/web/.env.local
+docker compose up --build
+# In second terminal:
+docker compose exec api sh -c "alembic upgrade head"
+```
+
+That's it. All tables will be created automatically.
 
 ---
 
-## Troubleshooting
+## Do NOT Do These
 
-**"pgvector extension not found"** — using stock postgres image; ensure docker-compose uses `build: ./infra/postgres-dev`  
-**"Port 5432 already in use"** — change to `5433:5432` in docker-compose.yml  
-**"CI fails missing deps"** — check npm ci / pip install steps in workflow
+- Do NOT run `alembic init` — already done
+- Do NOT run `alembic revision --autogenerate` unless you've changed models
+- Do NOT edit migration files inside the container — edit on host, they sync via volume mount
+- Do NOT use `winpty` with `docker compose exec` unless the command needs a TTY
+- Do NOT use Git Bash path syntax (`/app/...`) directly in docker exec — use `sh -c "..."` wrapper
