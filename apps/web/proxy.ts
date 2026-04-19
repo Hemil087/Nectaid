@@ -40,5 +40,3 @@ export async function proxy(req: NextRequest) {
 export const config = {
   matcher: ['/((?!api|_next|favicon|public|.*\\.svg|.*\\.ico).*)'],
 };
-
-export const runtime = 'nodejs';
