@@ -1,13 +1,8 @@
 import 'server-only';
 
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import type { ServiceAccount } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-
-interface ServiceAccount {
-  project_id: string;
-  client_email: string;
-  private_key: string;
-}
 
 function parseServiceAccount(raw: string): ServiceAccount {
   const trimmed = raw.trim();
