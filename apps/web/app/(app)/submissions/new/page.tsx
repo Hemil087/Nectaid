@@ -1,11 +1,14 @@
 import { PageHeader } from '@/components/shared/page-header';
-import { EmptyState } from '@/components/shared/empty-state';
+import { SubmissionForm } from '@/components/submissions/submission-form';
 
 export default function NewSubmissionPage() {
   return (
     <div className="space-y-6">
-      <PageHeader title="Report a Need" subtitle="Describe the situation and attach photos" />
-      <EmptyState title="Submission form coming in Day 3" />
+      <PageHeader
+        title="Report a Need"
+        subtitle="Describe the situation and attach photos — AI extracts structured needs automatically"
+      />
+      <SubmissionForm />
     </div>
   );
 }
