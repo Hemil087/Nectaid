@@ -1,6 +1,6 @@
 'use client';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { onAuth } from '@/lib/firebase/auth';
+import { onAuth, syncSessionCookie } from '@/lib/firebase/auth';
 import { apiFetch } from '@/lib/api/client';
 import type { AppUser } from '@/lib/types/api';
 
@@ -19,6 +19,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return onAuth(async (firebaseUser) => {
       if (firebaseUser) {
         try {
+          const idToken = await firebaseUser.getIdToken();
+          await syncSessionCookie(idToken);
           const me = await apiFetch<AppUser>('/auth/me');
           setUser(me);
         } catch {
