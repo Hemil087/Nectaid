@@ -282,6 +282,7 @@
 | Core API auth + volunteer + submissions endpoints | ✅ Done |
 | Frontend login / shell / submission form | ✅ Done |
 | Volunteer self-registration (signup flow) | ✅ Done |
+| Frontend — all app pages built | ✅ Done |
 | Pub/Sub + ingestion worker (Gemini + embeddings) | ❌ Missing |
 | Uploads signed-URL endpoint | ❌ Missing |
 | Needs review + publish endpoints | ❌ Missing |
@@ -293,11 +294,7 @@
 | Notification worker + SendGrid | ❌ Missing |
 | Analytics + reports endpoints | ❌ Missing |
 | Reports worker + PDF | ❌ Missing |
-| Frontend needs list + review UI | ❌ Missing |
-| Frontend volunteer registration | ❌ Missing |
-| Frontend assignments UX | ❌ Missing |
-| Frontend realtime hooks | ❌ Missing |
-| Frontend dashboard + reports | ❌ Missing |
+| Frontend realtime hooks (Firestore listeners) | ❌ Missing |
 | i18n (hi + gu) | ❌ Missing |
 | Security hardening checklist | ❌ Missing |
 | Demo seed data + E2E test | ❌ Missing |
