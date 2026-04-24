@@ -283,6 +283,7 @@
 | Frontend login / shell / submission form | ✅ Done |
 | Volunteer self-registration (signup flow) | ✅ Done |
 | Frontend — all app pages built | ✅ Done |
+| Frontend realtime hooks (Firestore listeners) | ✅ Done |
 | Pub/Sub + ingestion worker (Gemini + embeddings) | ❌ Missing |
 | Uploads signed-URL endpoint | ❌ Missing |
 | Needs review + publish endpoints | ❌ Missing |
@@ -294,7 +295,6 @@
 | Notification worker + SendGrid | ❌ Missing |
 | Analytics + reports endpoints | ❌ Missing |
 | Reports worker + PDF | ❌ Missing |
-| Frontend realtime hooks (Firestore listeners) | ❌ Missing |
 | i18n (hi + gu) | ❌ Missing |
 | Security hardening checklist | ❌ Missing |
 | Demo seed data + E2E test | ❌ Missing |

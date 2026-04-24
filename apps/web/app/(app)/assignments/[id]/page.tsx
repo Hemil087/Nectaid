@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
+import { useTaskStatus } from '@/lib/hooks/use-task-realtime';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +52,10 @@ export default function AssignmentDetailPage() {
       }
     ),
   });
+
+  // Firestore realtime — liveStatus overrides REST status when available
+  const { data: taskStatus } = useTaskStatus(id);
+  const liveStatus = (taskStatus?.status ?? assignment?.status) as AssignmentStatus;
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['assignment', id] });
@@ -110,9 +115,9 @@ export default function AssignmentDetailPage() {
     );
   }
 
-  const isPending = assignment.status === 'pending_accept';
-  const isAccepted = assignment.status === 'accepted';
-  const isInProgress = assignment.status === 'in_progress';
+  const isPending = liveStatus === 'pending_accept';
+  const isAccepted = liveStatus === 'accepted';
+  const isInProgress = liveStatus === 'in_progress';
   const deadline = assignment.accept_deadline ? new Date(assignment.accept_deadline) : null;
   const isExpired = deadline && deadline < new Date();
 
@@ -126,8 +131,8 @@ export default function AssignmentDetailPage() {
 
       {/* Status badges */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Badge variant="outline" className={STATUS_STYLES[assignment.status]}>
-          {assignment.status.replace('_', ' ')}
+        <Badge variant="outline" className={STATUS_STYLES[liveStatus]}>
+          {liveStatus.replace('_', ' ')}
         </Badge>
         {assignment.need?.urgency && (
           <Badge variant="outline" className={URGENCY_STYLES[assignment.need.urgency]}>
@@ -267,7 +272,7 @@ export default function AssignmentDetailPage() {
         </div>
       )}
 
-      {assignment.status === 'completed' && (
+      {liveStatus === 'completed' && (
         <Card className="border-emerald-200 bg-emerald-50/50">
           <CardContent className="py-4 flex items-center gap-3">
             <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { Need, Assignment } from '@/lib/types/api';
 import type { NeedStatus, Urgency, AssignmentStatus } from '@/lib/types/enums';
+import { useNeedRealtime } from '@/lib/hooks/use-need-realtime';
 
 const URGENCY_STYLES: Record<Urgency, string> = {
   critical: 'bg-red-100 text-red-700 border-red-200',
@@ -94,15 +95,20 @@ export default function NeedDetailPage() {
   const queryClient = useQueryClient();
   const [showPriority, setShowPriority] = useState(false);
 
+  // REST data
   const { data: need, isLoading } = useQuery<Need>({
     queryKey: ['need', id],
     queryFn: () => apiFetch(`/needs/${id}`),
   });
 
+  // Firestore realtime — liveStatus overrides REST status when available
+  const { data: realtime } = useNeedRealtime(id);
+  const liveStatus = (realtime?.status ?? need?.status) as NeedStatus;
+
   const { data: assignmentsData } = useQuery<{ items: Assignment[] }>({
     queryKey: ['need-assignments', id],
     queryFn: () => apiFetch(`/needs/${id}/assignments`),
-    enabled: !!need && ['matching_complete','assigned','in_progress','completed'].includes(need.status),
+    enabled: !!liveStatus && ['matching_complete', 'assigned', 'in_progress', 'completed'].includes(liveStatus),
   });
 
   const publishMutation = useMutation({
@@ -146,8 +152,8 @@ export default function NeedDetailPage() {
     );
   }
 
-  const canPublish = need.status === 'pending_review';
-  const canCancel = !['completed', 'cancelled', 'expired'].includes(need.status);
+  const canPublish = liveStatus === 'pending_review';
+  const canCancel = !['completed', 'cancelled', 'expired'].includes(liveStatus);
   const deadline = need.deadline ? new Date(need.deadline) : null;
 
   return (
@@ -196,11 +202,11 @@ export default function NeedDetailPage() {
 
       {/* Status + urgency row */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Badge variant="outline" className={`${URGENCY_STYLES[need.urgency]}`}>
+        <Badge variant="outline" className={URGENCY_STYLES[need.urgency]}>
           {need.urgency}
         </Badge>
-        <Badge variant="secondary" className={STATUS_STYLES[need.status]}>
-          {STATUS_LABELS[need.status]}
+        <Badge variant="secondary" className={STATUS_STYLES[liveStatus]}>
+          {STATUS_LABELS[liveStatus]}
         </Badge>
         <span className="text-xs text-muted-foreground capitalize">{need.need_type}</span>
         {need.category && <span className="text-xs text-muted-foreground">· {need.category}</span>}
@@ -276,7 +282,9 @@ export default function NeedDetailPage() {
           {/* Required skills */}
           {need.required_skills?.length > 0 && (
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-xs text-muted-foreground uppercase tracking-wide">Required skills</CardTitle></CardHeader>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs text-muted-foreground uppercase tracking-wide">Required skills</CardTitle>
+              </CardHeader>
               <CardContent className="pt-0 flex flex-wrap gap-1.5">
                 {need.required_skills.map((s) => (
                   <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
@@ -290,7 +298,9 @@ export default function NeedDetailPage() {
       {/* Assignments */}
       {assignmentsData?.items?.length ? (
         <Card>
-          <CardHeader><CardTitle className="text-base">Assigned volunteers ({assignmentsData.items.length})</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">Assigned volunteers ({assignmentsData.items.length})</CardTitle>
+          </CardHeader>
           <CardContent className="pt-0 divide-y divide-border">
             {assignmentsData.items.map((a) => (
               <div key={a.id} className="py-3 flex items-center justify-between">

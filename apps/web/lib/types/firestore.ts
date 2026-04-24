@@ -17,4 +17,5 @@ export interface FeedEvent {
   message: string;
   need_id?: string;
   created_at: string;
+  read : boolean;
 }

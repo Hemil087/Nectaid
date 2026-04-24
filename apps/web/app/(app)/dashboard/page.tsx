@@ -2,14 +2,18 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
+import { useAuth } from '@/lib/providers/auth-provider';
+import { useCoordinatorFeed } from '@/lib/hooks/use-coordinator-feed';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  AlertTriangle, Users, ClipboardList, Clock, Heart, ArrowRight
+  AlertTriangle, Users, ClipboardList, Clock, Heart, ArrowRight, Bell
 } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import type { DashboardData, Need } from '@/lib/types/api';
+import type { Urgency } from '@/lib/types/enums';
 
 const URGENCY_STYLES: Record<string, string> = {
   critical: 'bg-red-100 text-red-700 border-red-200',
@@ -67,6 +71,8 @@ function NeedRow({ need }: { need: Need }) {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardData>({
     queryKey: ['dashboard'],
     queryFn: () => apiFetch('/analytics/dashboard'),
@@ -82,6 +88,9 @@ export default function DashboardPage() {
     queryKey: ['needs', 'active'],
     queryFn: () => apiFetch('/needs?status=published&limit=5'),
   });
+
+  // Firestore realtime feed — only fires when org_id is available
+  const { events, unreadCount, markRead } = useCoordinatorFeed(user?.org_id ?? null);
 
   return (
     <div className="space-y-8">
@@ -198,6 +207,48 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Live activity feed */}
+      {events.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              Live activity
+              {unreadCount > 0 && (
+                <span className="bg-primary text-primary-foreground text-xs rounded-full px-2 py-0.5">
+                  {unreadCount} new
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 divide-y divide-border">
+            {events.map((event) => (
+              <div
+                key={event.id}
+                className={`py-3 flex items-start gap-3 ${!event.read ? 'bg-primary/5 -mx-6 px-6' : ''}`}
+              >
+                <div className={`p-1.5 rounded-full shrink-0 mt-0.5 ${!event.read ? 'bg-primary/10' : 'bg-muted'}`}>
+                  <Bell className={`h-3 w-3 ${!event.read ? 'text-primary' : 'text-muted-foreground'}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm">{event.message}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
+                  </p>
+                </div>
+                {!event.read && (
+                  <button
+                    onClick={() => markRead(event.id)}
+                    className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    Mark read
+                  </button>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
