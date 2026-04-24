@@ -284,10 +284,11 @@
 | Volunteer self-registration (signup flow) | ✅ Done |
 | Frontend — all app pages built | ✅ Done |
 | Frontend realtime hooks (Firestore listeners) | ✅ Done |
+| Priority scoring service | ✅ Done |
+| Matching algorithm service | ✅ Done |
+| Needs endpoints (get/patch/publish/cancel/explain/assignments) | ✅ Done |
 | Pub/Sub + ingestion worker (Gemini + embeddings) | ❌ Missing |
 | Uploads signed-URL endpoint | ❌ Missing |
-| Needs review + publish endpoints | ❌ Missing |
-| Priority scoring | ❌ Missing |
 | Matching worker | ❌ Missing |
 | Volunteer assignment endpoints | ❌ Missing |
 | Realtime Firestore sync from backend | ❌ Missing |
