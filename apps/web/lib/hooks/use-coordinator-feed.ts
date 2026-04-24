@@ -7,24 +7,16 @@ import {
 import { db } from '@/lib/firebase/firestore';
 import type { FeedEvent } from '@/lib/types/firestore';
 
-/**
- * Listens to /coordinator_feed/{orgId}/feed in Firestore.
- * Returns live feed events for the coordinator dashboard.
- * Provides a markRead() helper to flip event.read = true.
- *
- * Usage:
- *   const { events, unreadCount, markRead } = useCoordinatorFeed(user.org_id);
- */
 export function useCoordinatorFeed(orgId: string | null, maxEvents = 20) {
   const [events, setEvents] = useState<FeedEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(orgId !== null);
 
   useEffect(() => {
     if (!orgId) {
-      setLoading(false);
       return;
     }
 
+    setLoading(true);
     const feedRef = collection(db, 'coordinator_feed', orgId, 'feed');
     const q = query(feedRef, orderBy('created_at', 'desc'), limit(maxEvents));
 
@@ -55,7 +47,7 @@ export function useCoordinatorFeed(orgId: string | null, maxEvents = 20) {
     [orgId]
   );
 
-  const unreadCount = events.filter((e) => !(e as FeedEvent & { read?: boolean }).read).length;
+  const unreadCount = events.filter((e) => !e.read).length;
 
   return { events, unreadCount, markRead, loading };
 }
