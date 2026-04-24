@@ -1,13 +1,16 @@
 'use client';
-import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
+import { useTaskStatus } from '@/lib/hooks/use-task-realtime';
 import { PageHeader } from '@/components/shared/page-header';
-import { EmptyState } from '@/components/shared/empty-state';
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { MapPin, Clock, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { ArrowLeft, MapPin, Clock, Users, CheckCircle2, XCircle, Play } from 'lucide-react';
 import type { Assignment } from '@/lib/types/api';
 import type { AssignmentStatus } from '@/lib/types/enums';
 
@@ -22,17 +25,6 @@ const STATUS_STYLES: Record<AssignmentStatus, string> = {
   expired:        'bg-zinc-100 text-zinc-400 border-zinc-200',
 };
 
-const STATUS_LABELS: Record<AssignmentStatus, string> = {
-  pending_accept: 'Action required',
-  accepted:       'Accepted',
-  declined:       'Declined',
-  in_progress:    'In progress',
-  completed:      'Completed',
-  cancelled:      'Cancelled',
-  no_show:        'No show',
-  expired:        'Expired',
-};
-
 const URGENCY_STYLES: Record<string, string> = {
   critical: 'bg-red-100 text-red-700 border-red-200',
   high:     'bg-orange-100 text-orange-700 border-orange-200',
@@ -40,136 +32,235 @@ const URGENCY_STYLES: Record<string, string> = {
   low:      'bg-green-100 text-green-700 border-green-200',
 };
 
-const TABS: { value: AssignmentStatus | 'active' | 'all'; label: string }[] = [
-  { value: 'active',         label: 'Active' },
-  { value: 'pending_accept', label: 'Pending' },
-  { value: 'completed',      label: 'Completed' },
-  { value: 'all',            label: 'All' },
-];
+export default function AssignmentDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const queryClient = useQueryClient();
 
-function AssignmentCard({ assignment, now }: { assignment: Assignment; now: number }) {
-  const deadline = assignment.accept_deadline ? new Date(assignment.accept_deadline) : null;
-  const isPending = assignment.status === 'pending_accept';
-  const isExpiringSoon = deadline && isPending && (deadline.getTime() - now) < 5 * 60 * 1000;
+  const [declineReason, setDeclineReason] = useState('');
+  const [showDeclineForm, setShowDeclineForm] = useState(false);
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [showCompleteForm, setShowCompleteForm] = useState(false);
 
-  return (
-    <Link href={`/assignments/${assignment.id}`}>
-      <Card className={`hover:border-primary/40 transition-colors cursor-pointer group ${isPending ? 'border-yellow-300' : ''}`}>
-        <CardContent className="py-4 px-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap mb-1">
-                <Badge variant="outline" className={`text-xs ${STATUS_STYLES[assignment.status]}`}>
-                  {STATUS_LABELS[assignment.status]}
-                </Badge>
-                {assignment.need?.urgency && (
-                  <Badge variant="outline" className={`text-xs ${URGENCY_STYLES[assignment.need.urgency]}`}>
-                    {assignment.need.urgency}
-                  </Badge>
-                )}
-                {isExpiringSoon && (
-                  <span className="flex items-center gap-1 text-xs text-red-500">
-                    <AlertTriangle className="h-3 w-3" /> Expiring soon
-                  </span>
-                )}
-              </div>
-              <p className="font-medium text-sm truncate">{assignment.need?.title ?? `Assignment #${assignment.id.slice(0,8)}`}</p>
-              {assignment.role_in_team && (
-                <p className="text-xs text-muted-foreground mt-0.5">Role: {assignment.role_in_team}</p>
-              )}
-              <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-                {assignment.need?.location?.text && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
-                    {assignment.need.location.text}
-                  </span>
-                )}
-                {isPending && deadline && (
-                  <span className={`flex items-center gap-1 ${isExpiringSoon ? 'text-red-500' : ''}`}>
-                    <Clock className="h-3 w-3" />
-                    Accept by {deadline.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-2 shrink-0">
-              <p className="text-xs text-muted-foreground">
-                {(assignment.match_score * 100).toFixed(0)}% match
-              </p>
-              <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
+  const { data: assignment, isLoading } = useQuery<Assignment>({
+    queryKey: ['assignment', id],
+    queryFn: () => apiFetch<{ items: Assignment[] }>(`/volunteers/me/assignments`).then(
+      (res) => {
+        const found = res.items.find((a) => a.id === id);
+        if (!found) throw new Error('Not found');
+        return found;
+      }
+    ),
+  });
+
+  const { data: taskStatus } = useTaskStatus(id ?? null);
+  const liveStatus = (taskStatus?.status ?? assignment?.status) as AssignmentStatus;
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ['assignment', id] });
+    queryClient.invalidateQueries({ queryKey: ['assignments-me'] });
+  }
+
+  const acceptMutation = useMutation({
+    mutationFn: () => apiFetch(`/assignments/${id}/accept`, { method: 'POST' }),
+    onSuccess: invalidate,
+  });
+
+  const declineMutation = useMutation({
+    mutationFn: () => apiFetch(`/assignments/${id}/decline`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: declineReason }),
+    }),
+    onSuccess: () => { invalidate(); router.push('/assignments'); },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: () => apiFetch(`/assignments/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status: 'in_progress' }),
+    }),
+    onSuccess: invalidate,
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: () => apiFetch(`/assignments/${id}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status: 'completed', notes: completionNotes }),
+    }),
+    onSuccess: invalidate,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+        <Card><CardContent className="py-8">
+          <div className="space-y-3">
+            {[1,2,3].map(i => <div key={i} className="h-4 bg-muted animate-pulse rounded" />)}
           </div>
-        </CardContent>
-      </Card>
-    </Link>
-  );
-}
+        </CardContent></Card>
+      </div>
+    );
+  }
 
-export default function AssignmentsPage() {
-  const [tab, setTab] = useState<AssignmentStatus | 'active' | 'all'>('active');
-  // Stable timestamp for the render — avoids Date.now() in child render
-  const now = useMemo(() => Date.now(), []);
+  if (!assignment) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/assignments"><ArrowLeft className="h-4 w-4 mr-2" /> Back</Link>
+        </Button>
+        <p className="text-sm text-muted-foreground">Assignment not found.</p>
+      </div>
+    );
+  }
 
-  const { data, isLoading } = useQuery<{ items: Assignment[] }>({
-    queryKey: ['assignments-me'],
-    queryFn: () => apiFetch('/volunteers/me/assignments'),
-  });
-
-  const filtered = (data?.items ?? []).filter((a) => {
-    if (tab === 'all') return true;
-    if (tab === 'active') return ['pending_accept', 'accepted', 'in_progress'].includes(a.status);
-    return a.status === tab;
-  });
-
-  const pendingCount = (data?.items ?? []).filter((a) => a.status === 'pending_accept').length;
+  const isPending = liveStatus === 'pending_accept';
+  const isAccepted = liveStatus === 'accepted';
+  const isInProgress = liveStatus === 'in_progress';
+  const deadline = assignment.accept_deadline ? new Date(assignment.accept_deadline) : null;
+  const isExpired = deadline && deadline < new Date();
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="My Assignments"
-        subtitle={pendingCount > 0 ? `${pendingCount} assignment${pendingCount !== 1 ? 's' : ''} awaiting your response` : undefined}
-      />
+    <div className="max-w-2xl mx-auto space-y-6">
+      <Button variant="ghost" size="sm" asChild>
+        <Link href="/assignments"><ArrowLeft className="h-4 w-4 mr-2" /> All assignments</Link>
+      </Button>
 
-      <div className="flex gap-1 flex-wrap">
-        {TABS.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTab(t.value)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              tab === t.value
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}
-          >
-            {t.label}
-            {t.value === 'pending_accept' && pendingCount > 0 && (
-              <span className="ml-1.5 bg-yellow-500 text-white rounded-full px-1.5 py-0.5 text-xs">
-                {pendingCount}
-              </span>
-            )}
-          </button>
-        ))}
+      <PageHeader title={assignment.need?.title ?? 'Assignment'} />
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge variant="outline" className={STATUS_STYLES[liveStatus]}>
+          {liveStatus.replace('_', ' ')}
+        </Badge>
+        {assignment.need?.urgency && (
+          <Badge variant="outline" className={URGENCY_STYLES[assignment.need.urgency]}>
+            {assignment.need.urgency}
+          </Badge>
+        )}
+        {assignment.role_in_team && (
+          <span className="text-xs text-muted-foreground">Role: {assignment.role_in_team}</span>
+        )}
       </div>
 
-      {isLoading ? (
+      <Card>
+        <CardHeader><CardTitle className="text-base">Task details</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {assignment.need?.location?.text && (
+            <div className="flex items-center gap-2 text-sm">
+              <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span>{assignment.need.location.text}</span>
+            </div>
+          )}
+          {assignment.need?.deadline && (
+            <div className="flex items-center gap-2 text-sm">
+              <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span>Due {new Date(assignment.need.deadline).toLocaleDateString('en-IN', {
+                day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+              })}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2 text-sm">
+            <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span>Match score: {(assignment.match_score * 100).toFixed(0)}%</span>
+          </div>
+          {isPending && deadline && (
+            <div className={`flex items-center gap-2 text-sm ${isExpired ? 'text-red-500' : 'text-yellow-600'}`}>
+              <Clock className="h-4 w-4 shrink-0" />
+              <span>
+                {isExpired ? 'Acceptance deadline passed' : `Accept by ${deadline.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {isPending && !isExpired && (
         <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}><CardContent className="py-4 px-5">
-              <div className="h-4 w-24 bg-muted animate-pulse rounded mb-2" />
-              <div className="h-4 w-2/3 bg-muted animate-pulse rounded mb-2" />
-              <div className="h-3 w-1/2 bg-muted animate-pulse rounded" />
-            </CardContent></Card>
-          ))}
+          <Button className="w-full" onClick={() => acceptMutation.mutate()} disabled={acceptMutation.isPending}>
+            <CheckCircle2 className="h-4 w-4 mr-2" />
+            {acceptMutation.isPending ? 'Accepting…' : 'Accept assignment'}
+          </Button>
+          {!showDeclineForm ? (
+            <Button variant="outline" className="w-full" onClick={() => setShowDeclineForm(true)}>
+              <XCircle className="h-4 w-4 mr-2" /> Decline
+            </Button>
+          ) : (
+            <Card className="border-red-200">
+              <CardContent className="py-4 space-y-3">
+                <div className="space-y-2">
+                  <Label>Reason for declining (optional)</Label>
+                  <input
+                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="e.g. Out of station, schedule conflict"
+                    value={declineReason}
+                    onChange={(e) => setDeclineReason(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="destructive" size="sm" className="flex-1"
+                    onClick={() => declineMutation.mutate()} disabled={declineMutation.isPending}>
+                    {declineMutation.isPending ? 'Declining…' : 'Confirm decline'}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowDeclineForm(false)}>Cancel</Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {acceptMutation.isError && <p className="text-sm text-destructive">Failed to accept. Please try again.</p>}
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          title={tab === 'active' ? 'No active assignments' : 'No assignments here'}
-          description={tab === 'active' ? "You'll be notified by email when you're matched to a need." : undefined}
-        />
-      ) : (
+      )}
+
+      {isAccepted && (
+        <Button className="w-full" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}>
+          <Play className="h-4 w-4 mr-2" />
+          {startMutation.isPending ? 'Starting…' : 'Mark as in progress'}
+        </Button>
+      )}
+
+      {isInProgress && (
         <div className="space-y-3">
-          {filtered.map((a) => <AssignmentCard key={a.id} assignment={a} now={now} />)}
+          {!showCompleteForm ? (
+            <Button className="w-full" onClick={() => setShowCompleteForm(true)}>
+              <CheckCircle2 className="h-4 w-4 mr-2" /> Mark as completed
+            </Button>
+          ) : (
+            <Card className="border-emerald-200">
+              <CardContent className="py-4 space-y-3">
+                <div className="space-y-2">
+                  <Label>Completion notes (optional)</Label>
+                  <textarea rows={3}
+                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                    placeholder="e.g. Checked 23 children, 3 referred to district hospital"
+                    value={completionNotes}
+                    onChange={(e) => setCompletionNotes(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" className="flex-1"
+                    onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending}>
+                    {completeMutation.isPending ? 'Saving…' : 'Submit completion'}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowCompleteForm(false)}>Cancel</Button>
+                </div>
+                {completeMutation.isError && <p className="text-sm text-destructive">Failed to complete. Please try again.</p>}
+              </CardContent>
+            </Card>
+          )}
         </div>
+      )}
+
+      {liveStatus === 'completed' && (
+        <Card className="border-emerald-200 bg-emerald-50/50">
+          <CardContent className="py-4 flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-emerald-700">Task completed</p>
+              {assignment.completion_notes && (
+                <p className="text-xs text-emerald-600 mt-0.5">{assignment.completion_notes}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

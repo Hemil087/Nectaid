@@ -47,10 +47,15 @@ const TABS: { value: AssignmentStatus | 'active' | 'all'; label: string }[] = [
   { value: 'all',            label: 'All' },
 ];
 
+function isDeadlineSoon(deadline: Date): boolean {
+  const diff = deadline.getTime() - new Date().getTime();
+  return diff > 0 && diff < 5 * 60 * 1000;
+}
+
 function AssignmentCard({ assignment }: { assignment: Assignment }) {
   const deadline = assignment.accept_deadline ? new Date(assignment.accept_deadline) : null;
   const isPending = assignment.status === 'pending_accept';
-  const isExpiringSoon = deadline && isPending && (deadline.getTime() - Date.now()) < 5 * 60 * 1000;
+  const expiringSoon = isPending && deadline !== null && isDeadlineSoon(deadline);
 
   return (
     <Link href={`/assignments/${assignment.id}`}>
@@ -67,7 +72,7 @@ function AssignmentCard({ assignment }: { assignment: Assignment }) {
                     {assignment.need.urgency}
                   </Badge>
                 )}
-                {isExpiringSoon && (
+                {expiringSoon && (
                   <span className="flex items-center gap-1 text-xs text-red-500">
                     <AlertTriangle className="h-3 w-3" /> Expiring soon
                   </span>
@@ -85,7 +90,7 @@ function AssignmentCard({ assignment }: { assignment: Assignment }) {
                   </span>
                 )}
                 {isPending && deadline && (
-                  <span className={`flex items-center gap-1 ${isExpiringSoon ? 'text-red-500' : ''}`}>
+                  <span className={`flex items-center gap-1 ${expiringSoon ? 'text-red-500' : ''}`}>
                     <Clock className="h-3 w-3" />
                     Accept by {deadline.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -128,7 +133,6 @@ export default function AssignmentsPage() {
         subtitle={pendingCount > 0 ? `${pendingCount} assignment${pendingCount !== 1 ? 's' : ''} awaiting your response` : undefined}
       />
 
-      {/* Tabs */}
       <div className="flex gap-1 flex-wrap">
         {TABS.map((t) => (
           <button
