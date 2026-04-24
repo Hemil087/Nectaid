@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getFirebaseAdminAuth } from '@/lib/firebase/admin';
 
-const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PATHS = ['/login', '/register'];
 
 function clearSessionAndRedirect(req: NextRequest) {
   const res = NextResponse.redirect(new URL('/login', req.url));

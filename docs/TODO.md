@@ -281,6 +281,7 @@
 | Firebase auth (frontend + backend) | ✅ Done |
 | Core API auth + volunteer + submissions endpoints | ✅ Done |
 | Frontend login / shell / submission form | ✅ Done |
+| Volunteer self-registration (signup flow) | ✅ Done |
 | Pub/Sub + ingestion worker (Gemini + embeddings) | ❌ Missing |
 | Uploads signed-URL endpoint | ❌ Missing |
 | Needs review + publish endpoints | ❌ Missing |

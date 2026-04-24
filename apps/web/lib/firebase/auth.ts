@@ -3,6 +3,8 @@ import {
   getAuth,
   onIdTokenChanged,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
   signOut as firebaseSignOut,
   type User,
   type Auth,
@@ -46,6 +48,16 @@ export async function signIn(email: string, password: string) {
   const idToken = await credentials.user.getIdToken();
   await setSessionCookie(idToken);
   return credentials;
+}
+
+export async function signUp(email: string, password: string, fullName: string) {
+  const credentials = await createUserWithEmailAndPassword(getFirebaseAuth(), email, password);
+  // Set display name on the Firebase user so it's available in the token
+  await updateProfile(credentials.user, { displayName: fullName });
+  // Force-refresh token so displayName is included in the new token
+  const idToken = await credentials.user.getIdToken(true);
+  await setSessionCookie(idToken);
+  return { credentials, idToken };
 }
 
 export async function signOut() {

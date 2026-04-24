@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const idToken = await firebaseUser.getIdToken();
           await syncSessionCookie(idToken);
-          const me = await apiFetch<AppUser>('/auth/me');
+          const me = await apiFetch<AppUser>('/auth/session', { method: 'POST' });
           setUser(me);
         } catch {
           setUser(null);
