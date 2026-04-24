@@ -42,3 +42,9 @@ docker-compose.override.yml
 
 # Alembic
 alembic/versions/__pycache__/
+
+services/core-api/.env
+.env.local
+*.json
+!package.json
+!tsconfig.json

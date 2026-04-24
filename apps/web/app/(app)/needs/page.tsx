@@ -1,8 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -134,9 +134,8 @@ function NeedCardSkeleton() {
   );
 }
 
-export default function NeedsPage() {
+function NeedsPageContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
 
   const [statusFilter, setStatusFilter] = useState<NeedStatus | 'all'>(
     (searchParams.get('status') as NeedStatus) ?? 'all'
@@ -241,5 +240,13 @@ export default function NeedsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function NeedsPage() {
+  return (
+    <Suspense>
+      <NeedsPageContent />
+    </Suspense>
   );
 }

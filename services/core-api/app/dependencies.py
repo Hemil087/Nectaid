@@ -30,7 +30,7 @@ def verify_firebase_token_from_header(authorization: str) -> dict[str, Any]:
     token = extract_bearer_token(authorization)
 
     try:
-        return firebase_auth.verify_id_token(token, check_revoked=True)
+        return firebase_auth.verify_id_token(token, check_revoked=False)
     except Exception as exc:
         raise _unauthorized() from exc
 

@@ -73,6 +73,7 @@ export function ImageUploadGrid({ files, progress, isUploading, onChange }: Prop
             const uploading = isUploading && pct < 100;
             return (
               <div key={idx} className="group relative aspect-square overflow-hidden rounded-lg border bg-muted">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={URL.createObjectURL(file)}
                   alt={file.name}

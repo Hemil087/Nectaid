@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { DashboardData, Need } from '@/lib/types/api';
-import type { Urgency } from '@/lib/types/enums';
 
 const URGENCY_STYLES: Record<string, string> = {
   critical: 'bg-red-100 text-red-700 border-red-200',

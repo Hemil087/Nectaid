@@ -23,11 +23,14 @@ services:
     build:
       context: ./services/core-api
     container_name: nectaid-api
+    env_file:
+      - ./services/core-api/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://nectaid:dev_password_change_in_prod@db:5432/nectaid
       PROJECT_ID: nectaid-dev
       REGION: asia-south1
-      PORT: 8080
+      PORT: 8080  
+
     ports:
       - "8080:8080"
     depends_on:

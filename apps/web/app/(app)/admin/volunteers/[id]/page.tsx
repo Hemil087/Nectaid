@@ -1,6 +1,6 @@
 'use client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/shared/page-header';
@@ -12,7 +12,6 @@ import type { VolunteerProfile } from '@/lib/types/api';
 
 export default function AdminVolunteerDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const queryClient = useQueryClient();
 
   const { data: volunteer, isLoading } = useQuery<VolunteerProfile & { full_name: string; email: string }>({

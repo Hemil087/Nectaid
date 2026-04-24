@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api/client';
-import { useAuth } from '@/lib/providers/auth-provider';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +26,6 @@ const LANGUAGES = [
 ];
 
 export default function MyProfilePage() {
-  const { user } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
