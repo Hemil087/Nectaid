@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from app.dependencies import get_current_user, require_role
 from app.models import Need, User
 from app.models.assignment import Assignment
 from app.schemas.need import NeedResponse, NeedsListResponse
+from app.services.matching_worker import run_matching
 from app.services.priority import (
     compute_full_score,
     compute_full_breakdown,
@@ -170,6 +171,7 @@ async def patch_need(
 @router.post("/{need_id}/publish", response_model=NeedResponse, status_code=status.HTTP_200_OK)
 async def publish_need(
     need_id: UUID,
+    background_tasks: BackgroundTasks,
     user: User = Depends(require_role("coordinator", "admin")),
     db: AsyncSession = Depends(get_db),
 ) -> NeedResponse:
@@ -194,6 +196,7 @@ async def publish_need(
 
     await db.commit()
     await db.refresh(need)
+    background_tasks.add_task(run_matching, str(need.id))
     return _serialize_need(need)
 
 

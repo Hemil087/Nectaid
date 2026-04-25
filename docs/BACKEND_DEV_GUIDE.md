@@ -14,8 +14,9 @@
 6. [API Endpoints (Built)](#6-api-endpoints-built)
 7. [Schemas](#7-schemas)
 8. [Ingestion Pipeline](#8-ingestion-pipeline)
-9. [Key Decisions & Gotchas](#9-key-decisions--gotchas)
-10. [What's Not Built Yet](#10-whats-not-built-yet)
+9. [Matching Pipeline](#9-matching-pipeline)
+10. [Key Decisions & Gotchas](#10-key-decisions--gotchas)
+11. [What's Not Built Yet](#11-whats-not-built-yet)
 
 ---
 
@@ -46,9 +47,11 @@ services/core-api/
 │   │   └── v1/
 │   │       ├── __init__.py
 │   │       ├── auth.py          # POST /auth/session, GET /auth/me
-│   │       ├── volunteers.py    # POST/GET/DELETE /volunteers
-│   │       ├── needs.py         # GET /needs
-│   │       └── submissions.py   # POST /submissions + _run_ingestion background task
+│   │       ├── volunteers.py    # POST/GET/PATCH/DELETE /volunteers + /me/assignments
+│   │       ├── needs.py         # Full needs CRUD + publish/cancel/explain/assignments
+│   │       ├── submissions.py   # POST /submissions + _run_ingestion background task
+│   │       ├── assignments.py   # POST accept/decline/status/rate
+│   │       └── uploads.py       # POST /signed-url + local dev upload receiver
 │   ├── models/
 │   │   ├── base.py              # DeclarativeBase with NAMING_CONVENTION
 │   │   ├── user.py              # Org, User
@@ -68,7 +71,9 @@ services/core-api/
 │   │   ├── extraction.py        # extract_need() — Gemini 2.5 Flash multimodal extraction
 │   │   ├── needs_service.py     # create_need_from_extraction() — persist Need row
 │   │   ├── embedding.py         # embed_need_text() — text-embedding-004 768-dim vector
-│   │   └── priority.py          # compute_stable_components/score/full_score
+│   │   ├── priority.py          # compute_stable_components/score/full_score
+│   │   ├── matching.py          # Phase 2+3: score_candidates(), form_team()
+│   │   └── matching_worker.py   # Phase 1 SQL + persist assignments (BackgroundTask)
 │   ├── utils/
 │   │   └── firebase.py          # init_firebase_admin()
 │   ├── database.py              # async engine + SessionLocal + get_db() dependency
@@ -118,6 +123,12 @@ curl http://localhost:8080/health
 open http://localhost:8080/api/v1/docs
 ```
 
+### After copying in new files (no schema changes)
+
+```bash
+docker compose restart api
+```
+
 ### After changing models
 
 ```bash
@@ -147,6 +158,7 @@ Backend env vars are set directly in `docker-compose.yml` for local dev. For sta
 | `FIREBASE_SA` | path to `firebase-service-account.json` | Firebase Admin SDK credentials |
 | `PROJECT_ID` | `nectaid-dev` | GCP project |
 | `REGION` | `asia-south1` | GCP region |
+| `GCS_UPLOADS_BUCKET` | _(unset locally)_ | When unset, uploads use local file fallback |
 
 `firebase-service-account.json` is gitignored. Place it at `services/core-api/firebase-service-account.json` for local dev. Add a volume mount in `docker-compose.yml`:
 
@@ -334,6 +346,47 @@ Returns 400 if profile already exists for this user.
 #### `GET /volunteers/me`
 Returns the current volunteer's user + profile. Role: `volunteer` only. Returns 404 if no profile.
 
+#### `PATCH /volunteers/me`
+Updates the current volunteer's profile. Role: `volunteer` only.
+
+Patchable fields on `users`: `full_name`, `phone`, `email`, `preferred_language`.
+Patchable fields on `volunteer_profiles`: `skills`, `home_address`, `max_travel_km`, `notification_prefs`, `certifications`.
+
+If `skills` changes, the skills embedding is regenerated asynchronously inline. Non-fatal if embedding fails — will show a warning in logs.
+
+**Request body:** any subset of patchable fields as a flat JSON object.
+
+#### `GET /volunteers/me/assignments`
+Returns the current volunteer's assignments with embedded need details. Role: `volunteer` only.
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "assignment_id": "uuid",
+      "need": {
+        "id": "uuid",
+        "title": "Urgent medical camp needed",
+        "need_type": "medical",
+        "urgency": "critical",
+        "location_text": "Kathlal, Kheda",
+        "status": "matching_complete"
+      },
+      "role_in_team": "pediatrician",
+      "match_score": 0.87,
+      "status": "pending_accept",
+      "assigned_at": "...",
+      "accept_deadline": "...",
+      "responded_at": null,
+      "completion_notes": null,
+      "completion_photo_urls": null
+    }
+  ],
+  "total": 3
+}
+```
+
 #### `DELETE /volunteers/me`
 Soft-deletes the current user by setting `users.deleted_at`. DPDP right-to-erasure. Returns 204. Any role.
 
@@ -353,16 +406,54 @@ Returns paginated list of needs. Role: `coordinator` or `admin`.
 | `limit` | int | Page size, default 20, max 100 |
 | `cursor` | string | Pagination cursor (integer offset) |
 
+`priority_score` in the response always includes fresh `time_pressure` computed from `deadline`.
+
+#### `GET /needs/{id}`
+Full need detail. Role: `coordinator`, `admin`, or `volunteer`.
+
+#### `PATCH /needs/{id}`
+Coordinator edits AI-extracted fields. Only allowed while `status = pending_review`. Role: `coordinator` or `admin`.
+
+Allowed fields: `title`, `need_type`, `category`, `description`, `urgency`, `beneficiary_count`, `required_skills`, `required_team_size`, `resources_needed`, `deadline`, `window_start`, `window_end`.
+
+If any scoring field changes (`urgency`, `need_type`, `category`, `beneficiary_count`, `required_skills`), stable priority components are recomputed and persisted.
+
+#### `POST /needs/{id}/publish`
+Transitions `pending_review → published`. Recomputes and persists the full stable priority score. Triggers the matching pipeline as a `BackgroundTask`. Role: `coordinator` or `admin`.
+
+**Matching background task** (`run_matching` in `services/matching_worker.py`):
+1. Fetches candidate volunteers via SQL (PostGIS radius + pgvector cosine + availability + not double-booked + not previously declined on this need)
+2. Scores candidates + forms team via `matching.py`
+3. Inserts `Assignment` rows (`status=pending_accept`, `accept_deadline=now+15min`)
+4. Transitions need to `matching_complete`
+
+Graceful degradation: if `need.embedding` or `need.location` is `None`, the relevant SQL filter is skipped rather than failing.
+
+#### `POST /needs/{id}/cancel`
+Cancels a need from any non-terminal state. Role: `coordinator` or `admin`.
+
+#### `GET /needs/{id}/explain`
+Returns the full priority score breakdown. Role: `coordinator` or `admin`.
+
 **Response:**
 ```json
 {
-  "items": [...],
-  "total": 42,
-  "next_cursor": "20"
+  "priority_score": 78.4,
+  "breakdown": {
+    "urgency_component": 40.0,
+    "severity_component": 17.5,
+    "beneficiary_component": 12.8,
+    "time_pressure_component": 10.0,
+    "resource_difficulty_component": -1.9,
+    "total": 78.4
+  },
+  "formula": "priority = W_u*u + W_s*s + W_b*log(1+b) + W_t*t - W_r*r",
+  "weights": {"W_u": 40, "W_s": 25, "W_b": 20, "W_t": 10, "W_r": 5}
 }
 ```
 
-Note: cursor is currently offset-based. Will be replaced with keyset pagination (on `created_at + id`) post-MVP.
+#### `GET /needs/{id}/assignments`
+Lists all assignment rows for a need. Role: `coordinator` or `admin`.
 
 ---
 
@@ -393,7 +484,98 @@ Server sets `source='webform'` and `status='received'` — client cannot overrid
 }
 ```
 
-The ingestion pipeline runs asynchronously after the response. Poll `raw_submissions.status` to check progress.
+---
+
+### Assignments
+
+#### `POST /assignments/{id}/accept`
+Volunteer accepts a pending assignment. Role: `volunteer` (own assignments only).
+
+Fails with 409 if: status is not `pending_accept`, or `accept_deadline` has passed.
+
+**Side effect:** if all required-role assignments on the parent need are now `accepted`, transitions `needs.status` from `matching_complete → assigned`.
+
+#### `POST /assignments/{id}/decline`
+Volunteer declines a pending assignment. Role: `volunteer` (own assignments only).
+
+**Request body (optional):**
+```json
+{ "reason": "Out of station this weekend" }
+```
+
+#### `POST /assignments/{id}/status`
+Volunteer updates status during task execution. Role: `volunteer` (own assignments only).
+
+**Request body:**
+```json
+{
+  "status": "in_progress" | "completed",
+  "notes": "Checked 23 children, 3 referred to district hospital",
+  "photo_urls": ["https://..."]
+}
+```
+
+Valid transitions: `accepted → in_progress`, `in_progress → completed`.
+
+**Side effects:**
+- First `in_progress` → transitions need from `assigned → in_progress`
+- Last `completed` (all other assignments terminal) → transitions need to `completed`, sets `completed_at`
+
+`photo_urls` should be GCS public URLs obtained by first calling `POST /uploads/signed-url` with `purpose=completion`, uploading directly, then passing the `public_url` here.
+
+#### `POST /assignments/{id}/rate`
+Coordinator rates a volunteer after task completion. Role: `coordinator` or `admin`.
+
+**Request body:**
+```json
+{ "rating": 5, "feedback": "Prompt, thorough, documentation was excellent" }
+```
+
+Updates `volunteer_profiles.reliability_score` via EMA (α=0.2, clamped to [0.05, 1.0]).
+Also increments `total_tasks_completed` on the profile.
+
+---
+
+### Uploads
+
+#### `POST /uploads/signed-url`
+Returns a pre-authorised URL for the client to upload a file directly, plus the `public_url` to store in the DB.
+
+Role: any authenticated user.
+
+**Request body:**
+```json
+{
+  "content_type": "image/jpeg",
+  "filename": "photo.jpg",
+  "purpose": "submission" | "completion"
+}
+```
+
+**Response:**
+```json
+{
+  "upload_url": "https://...",
+  "object_key": "task-completion/abc123/photo.jpg",
+  "public_url": "https://...",
+  "expires_at": "2026-04-25T10:45:00+00:00"
+}
+```
+
+**Two modes:**
+
+| Mode | When | Behaviour |
+|---|---|---|
+| **GCS** | `GCS_UPLOADS_BUCKET` env var is set | Generates a real v4 signed PUT URL (15-min TTL) |
+| **Local dev** | `GCS_UPLOADS_BUCKET` unset | Returns `upload_url` pointing to `PUT /api/v1/uploads/local/{key}` on this server |
+
+The `purpose` field enforces path prefixes server-side — a volunteer cannot write to the `submissions/` prefix.
+
+#### `PUT /uploads/local/{key}` _(local dev only, hidden from Swagger)_
+Receives raw file bytes and saves to `/app/uploads/local/{key}`. Max 10 MB.
+
+#### `GET /uploads/file/{key}` _(local dev only, hidden from Swagger)_
+Serves a previously uploaded local file.
 
 ---
 
@@ -406,7 +588,7 @@ No auth required.
 {
   "status": "ok",
   "service": "core-api",
-  "version": "0.2.0"
+  "version": "0.3.0"
 }
 ```
 
@@ -441,7 +623,7 @@ notification_prefs: dict = {"email": True, "in_app": True}
 Flat merge of `users` + `volunteer_profiles` fields. Timestamps are prefixed `user_created_at` / `profile_created_at` to avoid collision.
 
 ### `NeedResponse`
-All `needs` table fields except `embedding` — the 768-dim vector is never sent to the client.
+All `needs` table fields except `embedding` — the 768-dim vector is never sent to the client. `priority_score` is always the full score (stable + fresh `time_pressure`).
 
 ### `NeedsListResponse`
 ```
@@ -450,18 +632,19 @@ total: int
 next_cursor: str | None
 ```
 
-### `SubmissionCreate`
-```
-raw_text: str | None
-image_urls: list[str] = []
-submitter_phone: str | None
-```
-
 ### `SubmissionResponse`
 ```
 id: UUID
 status: str
 created_at: datetime
+```
+
+### `SignedUrlResponse`
+```
+upload_url: str
+object_key: str
+public_url: str
+expires_at: str
 ```
 
 ---
@@ -521,7 +704,72 @@ Both `extraction.py` and `embedding.py` load credentials from `FIREBASE_SERVICE_
 
 ---
 
-## 9. Key Decisions & Gotchas
+## 9. Matching Pipeline
+
+### Overview
+
+Triggered as a `BackgroundTask` from `POST /needs/{id}/publish`. Lives in `app/services/matching_worker.py`.
+
+```
+POST /needs/{id}/publish
+  → status → published, priority score persisted → return response immediately
+  → [background] run_matching(need_id)
+      Phase 1  — _fetch_candidates(): raw SQL with dynamic clauses
+      Phase 2  — score_candidates(): weighted match_score per candidate
+      Phase 3  — form_team(): greedy skill coverage → Hungarian fallback
+      Phase 4  — _persist_assignments(): insert Assignment rows
+                  need.status → matching_complete
+      [no candidates] — need stays published, coordinator sees "no matches" state
+      [exception]      — need stays published, error logged
+```
+
+### Phase 1 SQL
+
+Dynamic SQL built in `_fetch_candidates()`. Clauses are conditionally included based on what's populated on the need:
+
+| Condition | When skipped |
+|---|---|
+| `pgvector cosine ORDER BY` | `need.embedding is None` → falls back to `ORDER BY reliability_score DESC` |
+| `ST_DWithin` geospatial filter | `need.location is None` (currently always None — geocoding not yet wired) |
+| `availability_slots` EXISTS | `need.window_start/window_end is None` |
+| Double-booking `tstzrange` check | `need.window_start/window_end is None` |
+
+The `NOT EXISTS` filter for previously-declined/expired volunteers always runs.
+
+### Phase 2 Scoring (`matching.py`)
+
+```python
+match_score = 0.50 × similarity
+            + 0.20 × location_score       # max(0, 1 - distance_km/max_travel_km)
+            + 0.15 × reliability_score
+            + 0.10 × experience_score     # min(experience_in_type/10, 1)
+            + 0.05 × (1 - recency_penalty) # min(tasks_this_week/5, 1)
+```
+
+### Phase 3 Team Formation (`matching.py`)
+
+1. `team_size == 1` → return top-1 by match_score
+2. Single repeated skill → top-N by match_score
+3. Multi-skill → greedy skill-coverage pass first
+4. Greedy fails to cover all skills → Hungarian algorithm (`scipy.optimize.linear_sum_assignment`)
+
+### Assignment rows
+
+Each team member gets one `Assignment` row:
+- `status = pending_accept`
+- `accept_deadline = now() + 15 minutes`
+- `match_breakdown` JSONB with per-component scores
+
+### Files
+
+| File | Responsibility |
+|---|---|
+| `app/services/matching_worker.py` | Phase 1 SQL + Phase 4 persist — BackgroundTask entry point |
+| `app/services/matching.py` | Phase 2 scoring + Phase 3 team formation — pure Python, no DB |
+
+---
+
+## 10. Key Decisions & Gotchas
 
 **Alembic uses psycopg2, app uses asyncpg — intentional.**
 Alembic's migration engine is synchronous. psycopg2 is the sync driver. The running app uses asyncpg for async performance. Both point to the same database.
@@ -538,8 +786,8 @@ This means migration files generated inside the container (`alembic revision --a
 **`embedding` excluded from `NeedResponse` — intentional.**
 The `needs.embedding` column is a 768-dimension float vector (~6KB per row). Serializing it in list responses would waste significant bandwidth. The frontend never needs raw embeddings.
 
-**`delete_my_profile` requires `db` injection.**
-Setting `user.deleted_at` on the ORM object without flushing does nothing — the session must be told about the change. Always inject `db: AsyncSession = Depends(get_db)` and call `await db.flush()` in mutation endpoints.
+**`need.location` is always `None` for now — known gap.**
+`needs_service.py` does not geocode `location_hint` (a text string like "Kathlal, Kheda") to a PostGIS point. The matching SQL handles this with a conditional clause — the geospatial filter is skipped when `need.location is None`. For MVP, volunteers are matched purely on skill embedding similarity + reliability score. Post-MVP: wire a geocoding API call in `create_need_from_extraction`.
 
 **`init_firebase_admin()` is called once on startup, not per request.**
 Firebase SDK initialization is expensive. It's called in `startup_event()` in `main.py`. The `verify_firebase_token_from_header()` function does NOT call it — it assumes it's already initialized.
@@ -547,39 +795,39 @@ Firebase SDK initialization is expensive. It's called in `startup_event()` in `m
 **Role defaults to `volunteer` if no Firebase custom claim is set.**
 On first `POST /auth/session`, if the Firebase token has no `role` claim, the user is created as a volunteer. To create coordinators or admins, set the custom claim via Firebase Admin SDK before the user's first login.
 
+**Uploads: GCS vs local dev.**
+`POST /uploads/signed-url` checks for `GCS_UPLOADS_BUCKET` env var. If unset, it returns a local upload URL (`PUT /api/v1/uploads/local/{key}`) so the frontend upload flow works without any GCS setup locally.
+
+**Matching background task opens its own DB session.**
+`run_matching` uses `SessionLocal()` directly, not `get_db()`, because it runs outside the request lifecycle. This is the same pattern as `_run_ingestion` in submissions.py.
+
 ---
 
-## 10. What's Not Built Yet
+## 11. What's Not Built Yet
 
 Endpoints still needed (in priority order):
 
-| Endpoint | Day | Purpose |
+| Endpoint | Priority | Purpose |
 |---|---|---|
-| `PATCH /volunteers/me` | Day 6 | Update volunteer profile |
-| `GET /volunteers/me/assignments` | Day 6 | Volunteer's assignment list |
-| `GET /needs/{id}` | Day 4 | Single need detail |
-| `GET /needs/{id}/explain` | Day 5 | Priority score breakdown |
-| `PATCH /needs/{id}` | Day 4 | Coordinator edits extracted fields |
-| `POST /needs/{id}/publish` | Day 4 | Publish need → triggers matching |
-| `POST /needs/{id}/cancel` | Day 4 | Cancel a need |
-| `POST /assignments/{id}/accept` | Day 6 | Volunteer accepts |
-| `POST /assignments/{id}/decline` | Day 6 | Volunteer declines |
-| `POST /assignments/{id}/status` | Day 6 | Update status (in_progress / completed) |
-| `POST /assignments/{id}/rate` | Day 6 | Coordinator rates volunteer |
-| `POST /uploads/signed-url` | Day 3 | GCS signed URL for file upload |
-| `GET /analytics/dashboard` | Day 9 | Coordinator dashboard aggregates |
-| `GET /reports/weekly` | Day 9 | Weekly report JSON |
-| `GET /reports/weekly.pdf` | Day 9 | Signed GCS URL for PDF |
-| `POST /notifications/{id}/read` | Day 7 | Mark notification read |
-| `POST /cron/escalate` | Day 7 | Cloud Scheduler: expire stale assignments |
-| `POST /cron/weekly-report` | Day 9 | Cloud Scheduler: trigger report generation |
-| `POST /webhooks/sendgrid` | Day 8 | SendGrid event webhook |
+| `sync_firestore()` helper | P0 | Write Firestore mirrors after every status change — frontend realtime hooks fire on nothing without this |
+| `GET /analytics/dashboard` | P0 | Coordinator dashboard shows zeros — direct Postgres aggregates |
+| `POST /cron/escalate` | P1 | Cloud Scheduler: expire stale pending_accept assignments, re-trigger matching |
+| `GET /notifications` | P1 | In-app notification feed |
+| `POST /notifications/{id}/read` | P1 | Mark notification read |
+| SendGrid email on assignment creation | P1 | Inline in `matching_worker.py` after assignments are persisted |
+| `POST /webhooks/sendgrid` | P2 | ED25519-verified delivery event handler — updates `notifications.status` |
+| `GET /reports/weekly` | P2 | Weekly report JSON |
+| `GET /reports/weekly.pdf` | P2 | Signed GCS URL to PDF |
+| `POST /cron/weekly-report` | P2 | Triggers reports worker |
+| `POST /admin/users/{id}/suspend` | P2 | Admin suspend |
+| `GET /admin/volunteers` | P2 | Admin volunteer list |
+| `PATCH /admin/volunteers/{id}/verify` | P2 | Admin verify volunteer |
 
 Background workers not yet started:
 
-| Worker | Day | Purpose |
+| Worker | Priority | Purpose |
 |---|---|---|
-| ~~`ingestion-worker`~~ | ~~Day 3~~ | Replaced by `BackgroundTasks` in `core-api` — see section 8 |
-| `matching-worker` | Day 5 | Pub/Sub consumer: run matching algorithm |
-| `notification-worker` | Day 8 | Pub/Sub consumer: send SendGrid emails |
-| `reports-worker` | Day 9 | Pub/Sub consumer: generate weekly PDF |
+| ~~`ingestion-worker`~~ | — | Replaced by `BackgroundTasks` in `core-api` |
+| ~~`matching-worker`~~ | — | Replaced by `BackgroundTasks` in `core-api` (`run_matching`) |
+| `notification-worker` | P1 | SendGrid email send — can be done inline in matching_worker for MVP |
+| `reports-worker` | P2 | Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS |

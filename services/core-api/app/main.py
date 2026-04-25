@@ -4,8 +4,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.auth import router as auth_router
+from app.api.v1.assignments import router as assignments_router
 from app.api.v1.needs import router as needs_router
 from app.api.v1.submissions import router as submissions_router
+from app.api.v1.uploads import router as uploads_router
 from app.api.v1.volunteers import router as volunteers_router
 from app.utils.firebase import init_firebase_admin
 
@@ -14,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Nectaid API",
-    version="0.2.0",
+    version="0.3.0",
     docs_url="/api/v1/docs",
-    openapi_url="/api/v1/openapi.json"
+    openapi_url="/api/v1/openapi.json",
 )
 
 app.add_middleware(
@@ -27,20 +29,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_router, prefix="/api/v1")
-app.include_router(volunteers_router, prefix="/api/v1")
-app.include_router(needs_router, prefix="/api/v1")
+app.include_router(auth_router,        prefix="/api/v1")
+app.include_router(volunteers_router,  prefix="/api/v1")
+app.include_router(needs_router,       prefix="/api/v1")
 app.include_router(submissions_router, prefix="/api/v1")
+app.include_router(assignments_router, prefix="/api/v1")
+app.include_router(uploads_router,     prefix="/api/v1")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "core-api", "version": "0.2.0"}
+    return {"status": "ok", "service": "core-api", "version": "0.3.0"}
 
 
 @app.get("/")
 async def root():
-    return {"message": "Nectaid API v0.2.0", "docs": "/api/v1/docs"}
+    return {"message": "Nectaid API v0.3.0", "docs": "/api/v1/docs"}
 
 
 @app.on_event("startup")

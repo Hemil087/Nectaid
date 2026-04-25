@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
@@ -13,7 +14,8 @@ from app.dependencies import (
     require_role,
     verify_firebase_token_from_header,
 )
-from app.models import User, VolunteerProfile
+from app.models import Need, User, VolunteerProfile
+from app.models.assignment import Assignment
 from app.schemas.volunteer import VolunteerCreate, VolunteerResponse
 
 
@@ -151,3 +153,112 @@ async def delete_my_profile(
     current_user.deleted_at = datetime.now(timezone.utc)
     await db.flush()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── PATCH /volunteers/me ───────────────────────────────────────────────────
+
+_PATCH_USER_FIELDS    = {"full_name", "phone", "email", "preferred_language"}
+_PATCH_PROFILE_FIELDS = {"skills", "home_address", "max_travel_km", "notification_prefs", "certifications"}
+
+
+@router.patch(
+    "/me",
+    response_model=VolunteerResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def patch_my_profile(
+    body: dict,
+    current_user: User = Depends(require_role("volunteer")),
+    db: AsyncSession = Depends(get_db),
+) -> VolunteerResponse:
+    profile = await _get_profile(db, current_user.id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Volunteer profile not found")
+
+    skills_changed = False
+    now = datetime.now(timezone.utc)
+
+    for key, value in body.items():
+        if key in _PATCH_USER_FIELDS:
+            setattr(current_user, key, value)
+        elif key in _PATCH_PROFILE_FIELDS:
+            if key == "skills":
+                skills_changed = True
+            setattr(profile, key, value)
+
+    current_user.updated_at = now
+    profile.updated_at = now
+
+    # Re-generate skill embedding asynchronously when skills change
+    if skills_changed:
+        from app.services.embedding import embed_need_text
+        import asyncio
+        skills_text = " | ".join(profile.skills or [])
+        if skills_text.strip():
+            profile.skills_text = skills_text
+            try:
+                profile.skills_embedding = await embed_need_text(skills_text)
+            except Exception as exc:
+                # Non-fatal — embedding can be regenerated later
+                import logging
+                logging.getLogger(__name__).warning("skills embedding failed: %s", exc)
+
+    await db.commit()
+    await db.refresh(current_user)
+    await db.refresh(profile)
+    return _volunteer_response(current_user, profile)
+
+
+# ── GET /volunteers/me/assignments ────────────────────────────────────────
+
+@router.get(
+    "/me/assignments",
+    status_code=status.HTTP_200_OK,
+)
+async def get_my_assignments(
+    current_user: User = Depends(require_role("volunteer")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    result = await db.execute(
+        select(Assignment)
+        .where(Assignment.volunteer_id == current_user.id)
+        .order_by(Assignment.assigned_at.desc())
+    )
+    assignments = list(result.scalars().all())
+
+    # Fetch associated needs in one query
+    need_ids = list({a.need_id for a in assignments})
+    needs_map: dict[uuid.UUID, Need] = {}
+    if need_ids:
+        needs_result = await db.execute(select(Need).where(Need.id.in_(need_ids)))
+        for n in needs_result.scalars():
+            needs_map[n.id] = n
+
+    items = []
+    for a in assignments:
+        need = needs_map.get(a.need_id)
+        items.append({
+            "assignment_id": str(a.id),
+            "need": {
+                "id": str(need.id) if need else str(a.need_id),
+                "title": need.title if need else None,
+                "need_type": need.need_type if need else None,
+                "urgency": need.urgency if need else None,
+                "location_text": need.location_text if need else None,
+                "status": need.status if need else None,
+            },
+            "role_in_team": a.role_in_team,
+            "match_score": a.match_score,
+            "match_breakdown": a.match_breakdown,
+            "status": a.status,
+            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+            "accept_deadline": a.accept_deadline.isoformat() if a.accept_deadline else None,
+            "responded_at": a.responded_at.isoformat() if a.responded_at else None,
+            "started_at": a.started_at.isoformat() if a.started_at else None,
+            "completed_at": a.completed_at.isoformat() if a.completed_at else None,
+            "coordinator_rating": a.coordinator_rating,
+            "completion_notes": a.completion_notes,
+            "completion_photo_urls": a.completion_photo_urls,
+        })
+
+    return {"items": items, "total": len(items)}
