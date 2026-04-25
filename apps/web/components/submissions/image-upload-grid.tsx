@@ -1,21 +1,19 @@
 'use client';
 import { useCallback, useRef, useState } from 'react';
 import { ImagePlus, X, Loader2 } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils/cn';
-import type { UploadProgress } from '@/lib/hooks/use-upload';
 
 const MAX_IMAGES = 5;
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic';
 
 interface Props {
   files: File[];
-  progress: UploadProgress;
+  /** True while the parent form mutation is in flight — disables remove buttons & shows overlay. */
   isUploading: boolean;
   onChange: (files: File[]) => void;
 }
 
-export function ImageUploadGrid({ files, progress, isUploading, onChange }: Props) {
+export function ImageUploadGrid({ files, isUploading, onChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -40,7 +38,7 @@ export function ImageUploadGrid({ files, progress, isUploading, onChange }: Prop
         className={cn(
           'flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors',
           dragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
-          files.length >= MAX_IMAGES && 'pointer-events-none opacity-50',
+          (files.length >= MAX_IMAGES || isUploading) && 'pointer-events-none opacity-50',
         )}
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -68,35 +66,30 @@ export function ImageUploadGrid({ files, progress, isUploading, onChange }: Prop
 
       {files.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-          {files.map((file, idx) => {
-            const pct = progress[file.name] ?? 0;
-            const uploading = isUploading && pct < 100;
-            return (
-              <div key={idx} className="group relative aspect-square overflow-hidden rounded-lg border bg-muted">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={URL.createObjectURL(file)}
-                  alt={file.name}
-                  className="h-full w-full object-cover"
-                />
-                {uploading && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50">
-                    <Loader2 className="mb-1 h-4 w-4 animate-spin text-white" />
-                    <Progress value={pct} className="h-1 w-3/4" />
-                  </div>
-                )}
-                {!isUploading && (
-                  <button
-                    type="button"
-                    onClick={() => remove(idx)}
-                    className="absolute right-1 top-1 hidden rounded-full bg-black/60 p-0.5 text-white group-hover:flex"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
+          {files.map((file, idx) => (
+            <div key={idx} className="group relative aspect-square overflow-hidden rounded-lg border bg-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={URL.createObjectURL(file)}
+                alt={file.name}
+                className="h-full w-full object-cover"
+              />
+              {isUploading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                  <Loader2 className="h-4 w-4 animate-spin text-white" />
+                </div>
+              )}
+              {!isUploading && (
+                <button
+                  type="button"
+                  onClick={() => remove(idx)}
+                  className="absolute right-1 top-1 hidden rounded-full bg-black/60 p-0.5 text-white group-hover:flex"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

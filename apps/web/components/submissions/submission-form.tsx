@@ -12,7 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ImageUploadGrid } from './image-upload-grid';
 import { SubmissionProgress } from './submission-progress';
 import { submissionsApi } from '@/lib/api/submissions';
-import { useUpload } from '@/lib/hooks/use-upload';
+
+const MAX_FILE_SIZE_MB = 10;
 
 const schema = z.object({
   raw_text: z
@@ -25,9 +26,8 @@ type FormValues = z.infer<typeof schema>;
 
 export function SubmissionForm() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [result, setResult] = useState<{ id: string; status: string } | null>(null);
-
-  const { uploadFiles, progress, isUploading, reset: resetUpload } = useUpload();
 
   const {
     register,
@@ -38,17 +38,31 @@ export function SubmissionForm() {
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      const image_urls = await uploadFiles(imageFiles);
-      return submissionsApi.create({ raw_text: values.raw_text, image_urls });
+      // Client-side size guard (backend also validates; this gives a faster error)
+      const oversized = imageFiles.find((f) => f.size > MAX_FILE_SIZE_MB * 1024 * 1024);
+      if (oversized) {
+        throw new Error(`"${oversized.name}" exceeds ${MAX_FILE_SIZE_MB} MB limit.`);
+      }
+      return submissionsApi.create({ raw_text: values.raw_text, files: imageFiles });
     },
     onSuccess: (data) => setResult(data),
   });
 
+  const handleFilesChange = (files: File[]) => {
+    setFileError(null);
+    const oversized = files.find((f) => f.size > MAX_FILE_SIZE_MB * 1024 * 1024);
+    if (oversized) {
+      setFileError(`"${oversized.name}" exceeds ${MAX_FILE_SIZE_MB} MB — please choose a smaller file.`);
+      return;
+    }
+    setImageFiles(files);
+  };
+
   const handleSubmitAnother = () => {
     setResult(null);
     setImageFiles([]);
+    setFileError(null);
     resetForm();
-    resetUpload();
     mutation.reset();
   };
 
@@ -94,10 +108,15 @@ export function SubmissionForm() {
             <Label>Photos (optional, up to 5)</Label>
             <ImageUploadGrid
               files={imageFiles}
-              progress={progress}
-              isUploading={isUploading}
-              onChange={setImageFiles}
+              isUploading={mutation.isPending}
+              onChange={handleFilesChange}
             />
+            {fileError && (
+              <p className="flex items-center gap-1 text-sm text-destructive">
+                <AlertCircle className="h-3.5 w-3.5" />
+                {fileError}
+              </p>
+            )}
           </div>
 
           {mutation.isError && (
@@ -111,7 +130,7 @@ export function SubmissionForm() {
 
           <Button type="submit" disabled={mutation.isPending} className="w-full sm:w-auto">
             {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isUploading ? 'Uploading photos…' : mutation.isPending ? 'Submitting…' : 'Submit Report'}
+            {mutation.isPending ? 'Submitting…' : 'Submit Report'}
           </Button>
         </form>
       </CardContent>

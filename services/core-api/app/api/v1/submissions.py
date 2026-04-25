@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/submissions", tags=["submissions"])
 
 _UPLOAD_DIR = Path("/app/uploads")
+_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)  # ensure dir exists at startup
 _MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB per file
 _ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
+
 
 
 async def _run_ingestion(
