@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.admin import router as admin_router
 from app.api.v1.analytics import router as analytics_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.auth import router as auth_router
@@ -39,8 +40,9 @@ app.include_router(submissions_router, prefix="/api/v1")
 app.include_router(assignments_router, prefix="/api/v1")
 app.include_router(uploads_router,     prefix="/api/v1")
 app.include_router(analytics_router,   prefix="/api/v1")
-app.include_router(cron_router,        prefix="/api/v1")
-app.include_router(notifications_router, prefix="/api/v1")
+app.include_router(cron_router,           prefix="/api/v1")
+app.include_router(notifications_router,  prefix="/api/v1")
+app.include_router(admin_router,          prefix="/api/v1")
 
 
 @app.get("/health")

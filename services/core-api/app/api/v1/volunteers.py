@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.dependencies import (
     get_current_user,
     get_user_by_firebase_uid,
@@ -20,6 +21,27 @@ from app.schemas.volunteer import VolunteerCreate, VolunteerResponse
 
 
 router = APIRouter(prefix="/volunteers", tags=["volunteers"])
+logger = logging.getLogger(__name__)
+
+
+async def _generate_volunteer_embedding(user_id: str) -> None:
+    """BackgroundTask: generate skill embedding and store on volunteer profile."""
+    from app.services.embedding import embed_need_text
+    async with SessionLocal() as db:
+        try:
+            result = await db.execute(
+                select(VolunteerProfile).where(VolunteerProfile.user_id == uuid.UUID(user_id))
+            )
+            profile = result.scalar_one_or_none()
+            if profile is None or not profile.skills:
+                return
+            skills_text = " | ".join(profile.skills)
+            profile.skills_text = skills_text
+            profile.skills_embedding = await embed_need_text(skills_text)
+            await db.commit()
+            logger.info("skills_embedding_ok volunteer=%s", user_id)
+        except Exception as exc:
+            logger.error("skills_embedding_failed volunteer=%s: %s", user_id, exc)
 
 
 def _normalize_role(claims_role: object) -> str:
@@ -72,6 +94,7 @@ async def _get_profile(db: AsyncSession, user_id):
 )
 async def create_volunteer(
     payload: VolunteerCreate,
+    background_tasks: BackgroundTasks,
     authorization: str = Header(...),
     db: AsyncSession = Depends(get_db),
 ) -> VolunteerResponse:
@@ -119,6 +142,9 @@ async def create_volunteer(
     await db.flush()
     await db.refresh(profile)
     await db.refresh(user)
+
+    if payload.skills:
+        background_tasks.add_task(_generate_volunteer_embedding, str(user.id))
 
     return _volunteer_response(user, profile)
 
