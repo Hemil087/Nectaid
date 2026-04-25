@@ -130,87 +130,47 @@
 
 ## 🟡 FRONTEND
 
-### Needs List + Review Flow (Day 4)
+### Pages — all wired (COMPLETE)
 
-- [ ] `lib/api/needs.ts` — typed API client for needs endpoints
-- [ ] `lib/hooks/use-needs.ts` — TanStack Query hook with filter/pagination support
-- [ ] `/needs` page with `NeedsTable` + `NeedsFilters`
-- [ ] `components/needs/needs-table.tsx` — filterable, sortable table
-- [ ] `components/needs/needs-filters.tsx` — status, urgency, type filters wired to URL params
-- [ ] `components/shared/need-type-icon.tsx`
-- [ ] `components/shared/deadline-display.tsx` — clock + relative time (date-fns)
-- [ ] `components/shared/location-display.tsx` — MapPin + text
-- [ ] `/needs/[id]/review` page
-- [ ] `components/needs/review-editor.tsx` — editable extraction fields + original side-by-side
-- [ ] `components/needs/extraction-diff.tsx` — original vs AI-extracted comparison
-- [ ] `components/needs/publish-confirm-dialog.tsx` — full breakdown before publishing
-- [ ] `lib/utils/priority.ts` — `time_pressure` + full score preview util
+- [x] `/dashboard` — stats from `GET /analytics/dashboard` + Firestore live activity feed (30s poll)
+- [x] `/needs` — `GET /needs` with status + urgency filters, client-side title search, skeleton loaders
+- [x] `/needs/[id]` — detail + Firestore realtime status overlay + assignments team list + publish/cancel actions
+- [x] `/needs/[id]/review` — full edit form for all PATCH-able fields + "Save & publish" flow
+- [x] `/assignments` — `GET /volunteers/me/assignments` with Active/Pending/Completed tabs + pending count badge
+- [x] `/assignments/[id]` — accept/decline/start/complete flow + Firestore realtime status
+- [x] `/notifications` — `GET /notifications` list + `POST /notifications/{id}/read`
+- [x] `/submissions/new` — multipart form upload wired to `POST /submissions`
+- [x] `/volunteers/register` — multi-step volunteer registration flow
+- [x] `/admin/volunteers` — admin volunteer management page (scaffolded)
+- [x] `/volunteers/me` — volunteer profile edit page (scaffolded)
 
-### Priority + Need Detail (Day 5)
+### API clients + hooks (COMPLETE)
 
-- [ ] `components/shared/priority-score-display.tsx` — score + Tooltip breakdown
-- [ ] `components/shared/match-score-display.tsx` — match score breakdown Tooltip
-- [ ] `/needs/[id]` page — `NeedDetailPanel` + `AssignmentTeamView`
-- [ ] `components/needs/need-status-stepper.tsx` — visual status progression bar
-- [ ] `components/needs/assignment-team-view.tsx` — all volunteers assigned to a need
-- [ ] Wire `GET /needs/{id}/explain` on tooltip hover
+- [x] `lib/api/needs.ts` — list, get, patch, publish, explain
+- [x] `lib/api/analytics.ts` — dashboard
+- [x] `lib/api/notifications.ts` — list, read, readAll
+- [x] `lib/api/assignments.ts` — accept, decline, status, rate
+- [x] `lib/firebase/firestore.ts` — Firestore client init
+- [x] `lib/hooks/use-coordinator-feed.ts` — `/coordinator_feed/{org_id}/feed` listener
+- [x] `lib/hooks/use-need-realtime.ts` — `/needs_realtime/{need_id}` listener
+- [x] `lib/hooks/use-task-realtime.ts` — `/task_status/{assignment_id}` listener
 
-### Volunteer UX (Day 6)
+### Notification bell (COMPLETE)
 
-- [ ] `/volunteers/register` multi-step form (4 steps: skills, location, availability, preferences)
-- [ ] `lib/firebase/firestore.ts` — Firebase Firestore client init
-- [ ] `lib/hooks/use-realtime-assignment.ts` — Firestore listener for assignment status
-- [ ] `/assignments` page — `AssignmentList` + `AssignmentCard`
-- [ ] `components/assignments/assignment-card.tsx`
-- [ ] `components/assignments/deadline-countdown.tsx` — live countdown timer
-- [ ] `components/assignments/accept-decline-buttons.tsx` — CTA block
-- [ ] `/assignments/[id]` page — full detail with actions
-- [ ] `components/assignments/completion-form.tsx` — status update + photo upload
-- [ ] `components/shared/photo-upload-button.tsx` — signs URL with `purpose=completion`
-- [ ] Role-filter the sidebar nav (coordinator vs volunteer vs admin items)
+- [x] Bell icon in TopBar links to `/notifications`
+- [x] Unread count badge — fetches `unread_count` from `GET /notifications`, polls every 30s, shows red badge capped at `9+`
 
-### Realtime + Notifications (Day 7)
+### Remaining frontend work
 
-- [ ] `lib/hooks/use-coordinator-feed.ts` — Firestore listener on `/coordinator_feed/{org_id}/feed`
-- [ ] `lib/hooks/use-realtime-need.ts` — Firestore listener on `/needs_realtime/{need_id}`
-- [ ] `components/dashboard/activity-feed.tsx` — recent-events list from Firestore
-- [ ] `components/notifications/notification-bell.tsx` — bell icon with unread count badge
-- [ ] `/notifications` page + `components/notifications/notification-item.tsx`
-- [ ] `lib/api/notifications.ts` — typed client for notifications endpoints
-- [ ] Wire `POST /notifications/{id}/read` on item click
-- [ ] Toast notifications on accept/decline/status update (sonner)
-
-### Dashboard + Reports (Day 8)
-
-- [ ] `lib/api/analytics.ts` + `lib/hooks/use-analytics.ts`
-- [ ] `/dashboard` page fully wired to `GET /analytics/dashboard`
-- [ ] `components/dashboard/stat-card.tsx` + `components/dashboard/stats-row.tsx`
-- [ ] `components/dashboard/needs-heatmap.tsx` — Leaflet + react-leaflet, SSR-safe (dynamic import)
-- [ ] `components/dashboard/critical-needs-alert.tsx` — banner for unassigned critical needs
-- [ ] `/reports` page + `components/reports/report-card.tsx`
-- [ ] PDF download flow — open signed GCS URL in new tab
-
-### Admin + Volunteer Profile (Day 9)
-
-- [ ] `/admin/volunteers` page — volunteer management list
-- [ ] `/volunteers/me` edit profile page — wire to `PATCH /volunteers/me`
-- [ ] `components/volunteers/availability-manager.tsx` — view/add/remove time slots
-- [ ] `components/volunteers/skills-editor.tsx` — add/remove skill tags
-- [ ] Settings page — language switcher wired to `PATCH /volunteers/me` + cookie
-
-### Polish + i18n (Day 10)
-
-- [ ] Skeleton loaders on every data-fetching page
-- [ ] Loading states on every mutation button (disable + spinner)
+- [ ] Toast notifications on accept/decline/status mutations (sonner)
+- [ ] Role-filter sidebar nav (hide coordinator items from volunteer view)
+- [ ] Photo upload in completion form — wire `POST /uploads/signed-url` + `PUT` to GCS/local
+- [ ] `/reports` page — wire to `GET /reports/weekly` + PDF download (blocked on backend)
+- [ ] `components/dashboard/needs-heatmap.tsx` — Leaflet map (blocked until `need.location` geocoding is wired)
+- [ ] Skeleton loaders on pages that are missing them
 - [ ] Error boundaries on all pages
-- [ ] Persist `NeedsFilters` to URL params (`useSearchParams`)
-- [ ] `messages/hi.json` — Hindi translation strings
-- [ ] `messages/gu.json` — Gujarati translation strings
-- [ ] Wire `next-intl` provider with locale switching
-- [ ] Desktop layout review at 1280px and 1440px
+- [ ] `messages/hi.json` + `messages/gu.json` + `next-intl` provider — i18n
 - [ ] Tablet layout: collapsed sidebar → Sheet nav at <1024px
-- [ ] Accessibility pass: alt text, aria-labels, form labels, focus rings
-- [ ] Clipboard paste for images in SubmissionForm
 
 ---
 
@@ -226,18 +186,16 @@
 
 ---
 
-## 🔵 DEMO PREP (Day 11)
+## 🔵 DEMO PREP
 
-- [ ] Seed 20 test volunteers with varied skills, locations, languages
-- [ ] Seed 10 test needs (mix of urgencies and team sizes, pre-published)
-- [ ] Firebase Auth: 1 coordinator account, 1 admin account, 2 volunteer accounts
-- [ ] Verify SendGrid sender identity; test email sends end-to-end
-- [ ] Seed 1 week of historical data so dashboard stats are non-zero
-- [ ] Pre-generate weekly PDF report for a historical week
+- [x] Seed 20 test volunteers with varied skills, locations, languages (`scripts/seed_demo.py`)
+- [x] Seed 10 test needs — all statuses covered: pending_review, published, matching_complete, assigned, in_progress, completed, cancelled
+- [x] Seed historical assignments (completed, accepted, in_progress) so dashboard avg response time + beneficiary stats are non-zero
+- [ ] Firebase Auth: create coordinator + admin + 2 volunteer accounts in Firebase console, run seed with their UIDs:
+      `DEMO_COORDINATOR_UID=xxx DEMO_ADMIN_UID=xxx docker compose exec api python scripts/seed_demo.py`
+- [ ] Verify SendGrid sender identity (`noreply@nectaid.org`); test assignment email end-to-end
 - [ ] Run full E2E: submission → AI extraction → coordinator review → publish → matching → volunteer accept → complete → rate
-- [ ] Record screen demo: priority breakdown tooltip, match score tooltip, team-of-3 flow
-- [ ] Gemini eval: 50 sample submissions → target >80% accuracy
-- [ ] All Pub/Sub DLQs empty before recording
+- [ ] Record screen demo: priority breakdown card, notification bell badge, assignment accept/decline flow
 - [ ] Architecture diagram in slide deck
 - [ ] Tag release: `git tag v0.1.0-demo`
 
@@ -270,7 +228,11 @@
 | Admin endpoints (list/verify/suspend) | ✅ Done |
 | Skill embedding on volunteer registration | ✅ Done |
 | App-level security hardening (rate limit, HSTS, safe_log) | ✅ Done |
+| Frontend pages fully wired to API (dashboard, needs, assignments, notifications) | ✅ Done |
+| Notification bell with live unread badge | ✅ Done |
+| Demo seed script (20 volunteers, 10 needs, historical assignments) | ✅ Done |
 | Reports endpoint + PDF worker | ❌ Missing |
 | i18n (hi + gu) | ❌ Missing |
 | Infra security (Secret Manager, GCS, Cloud SQL) | ❌ Infra task |
-| Demo seed data + E2E test | ❌ Missing |
+| Firebase Auth accounts wired to seed users | ❌ Manual step |
+| E2E demo run + recording | ❌ Pending |

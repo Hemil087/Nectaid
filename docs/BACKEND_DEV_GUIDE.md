@@ -154,6 +154,22 @@ docker compose build api
 docker compose up -d
 ```
 
+### Seed demo data
+
+```bash
+# Basic seed (placeholder Firebase UIDs — data visible in DB but not loginable)
+docker compose exec api python scripts/seed_demo.py
+
+# With real Firebase UIDs (create accounts in Firebase console first)
+DEMO_COORDINATOR_UID=abc123 DEMO_ADMIN_UID=def456 \
+DEMO_VOLUNTEER1_UID=ghi789 DEMO_VOLUNTEER2_UID=jkl012 \
+docker compose exec api python scripts/seed_demo.py
+```
+
+The script is idempotent — re-running skips if the "Gujarat Relief Network" org already exists.
+
+Seeded: 1 org, 1 coordinator, 1 admin, 20 verified volunteers (mixed skills/locations), 10 needs across all statuses, 8 historical assignments (completed/accepted/in_progress) so dashboard aggregates are non-zero.
+
 ### Environment variables
 
 Backend env vars are set directly in `docker-compose.yml` for local dev. For staging/production they come from GCP Secret Manager.
