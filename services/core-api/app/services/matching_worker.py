@@ -334,7 +334,7 @@ async def _notify_volunteers(
             notif.provider_message_id = (
                 response.headers.get("X-Message-Id", "") if response.headers else ""
             )
-            logger.info("email_sent assignment=%s to=%s", assignment.id, volunteer.email)
+            logger.info("email_sent assignment=%s volunteer=%s", assignment.id, assignment.volunteer_id)
 
         except Exception as exc:
             logger.error("email_failed assignment=%s: %s", assignment.id, exc)

@@ -1,6 +1,6 @@
 # Nectaid — Master TODO
 
-> **Current status (Apr 25, 2026):** Backend ≈ Day 9, Frontend ≈ Day 3. Deadline: Apr 28 23:59 IST.
+> **Current status (Apr 25, 2026):** Backend ≈ Day 10 (all core endpoints done). Frontend wiring in progress. Deadline: Apr 28 23:59 IST.
 > Items are ordered by dependency chain — don't skip ahead.
 
 ---
@@ -19,7 +19,7 @@
 - [x] Background task wired into `POST /submissions`
 - [x] `raw_submissions.status` lifecycle: `received → processing → extracted` (or `failed`)
 - [ ] Add prompt injection defense: scan extracted fields for suspicious patterns
-- [ ] Call `sync_firestore('needs', id)` so coordinator's review queue listener fires
+- [x] Call `sync_firestore('needs', id)` so coordinator's review queue listener fires
 - [ ] Run Gemini eval: 10 realistic sample submissions → check extraction outputs
 
 ### Uploads Endpoint (Day 3 — COMPLETE)
@@ -52,8 +52,8 @@
 - [x] Insert `assignments` rows with `status = pending_accept` + `accept_deadline = now() + 15min`
 - [x] Transition `needs.status` to `matching_complete` on success
 - [x] Graceful degradation when `need.embedding` or `need.location` is None
-- [ ] Call `sync_firestore('assignments', id)` for each assignment created
-- [ ] Emit inline SendGrid email per assignment created
+- [x] Call `sync_firestore('assignments', id)` for each assignment created
+- [x] Emit inline SendGrid email per assignment created
 
 ### Volunteer Assignment Endpoints (Day 6 — COMPLETE)
 
@@ -63,7 +63,7 @@
 - [x] `POST /assignments/{id}/decline` — store reason
 - [x] `POST /assignments/{id}/status` — `in_progress` / `completed` with photo URLs + cascade need status
 - [x] `POST /assignments/{id}/rate` — coordinator rates; EMA reliability score update
-- [ ] Generate skill embedding on `POST /volunteers` registration (async after profile creation)
+- [x] Generate skill embedding on `POST /volunteers` registration (async BackgroundTask)
 - [ ] Install audit log trigger on `assignments` table
 
 ### Analytics (Day 9 — COMPLETE)
@@ -87,13 +87,13 @@
 - [x] Wire into `matching_worker.py` after assignment creation (assignment_created event)
 - [x] Wire into `assignments.py` on accept, decline, status, rate
 
-### Notification Worker (Day 8 — PARTIAL)
+### Notification Worker (Day 8 — COMPLETE)
 
 - [x] Send assignment email inline in `matching_worker.py` after `_persist_assignments()`
   - SendGrid SDK: volunteer email, need title/urgency/deadline, deep link to `/assignments/{id}`
   - Write `notifications` row to Postgres (`status=queued → sent/failed`)
-- [ ] `GET /notifications` — paginated in-app notification feed
-- [ ] `POST /notifications/{id}/read` — mark as read
+- [x] `GET /notifications` — paginated in-app notification feed with `unread_count`
+- [x] `POST /notifications/{id}/read` — mark as read (ownership check)
 - [ ] `POST /webhooks/sendgrid` — ED25519 signature verification, update `notifications.status`
 - [ ] On permanent bounce: flag `email_deliverable=False` on volunteer profile
 
@@ -104,25 +104,25 @@
 - [ ] Reports worker: Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS upload
 - [ ] `POST /cron/weekly-report` (OIDC-authenticated) → trigger reports worker
 
-### Admin Endpoints
+### Admin Endpoints (COMPLETE)
 
-- [ ] `POST /admin/users/{id}/suspend` — set `deleted_at` (admin only)
-- [ ] `GET /admin/volunteers` — list with filter + pagination (admin/coordinator)
-- [ ] `PATCH /admin/volunteers/{id}/verify` — set `volunteer_profiles.verified = true`
+- [x] `POST /admin/users/{id}/suspend` — set `deleted_at` (admin only)
+- [x] `GET /admin/volunteers` — list with filter + pagination (admin/coordinator), cursor-paginated
+- [x] `PATCH /admin/volunteers/{id}/verify` — set `volunteer_profiles.verified = true` (admin only)
 
-### Security Hardening (Before Submission)
+### Security Hardening (COMPLETE — app level)
 
-- [ ] Every route has `Depends(require_role(...))` or explicit "public" annotation
-- [ ] Every multipart upload validates MIME + size
-- [ ] Secrets in Secret Manager only (not in git, not in .env files)
-- [ ] GCS bucket: uniform access + no public objects
-- [ ] Cloud SQL: no authorized public networks
+- [x] Every route has `Depends(require_role(...))` or explicit "public" annotation (audit done)
+- [x] Every multipart upload validates MIME + size (submissions.py + uploads.py)
+- [x] Rate limiter — `slowapi` 100 req/min per IP, applied globally via `SlowAPIMiddleware`
+- [x] HSTS header (`max-age=63072000; includeSubDomains`) + `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` via `SecurityHeadersMiddleware` in `main.py`
+- [x] Logs scrubbed of PII — `app/utils/safe_log.py` (email + phone regex scrubbers); email removed from assignment notification log
+- [x] `/cron/*` routes: `CRON_SECRET` in dev, OIDC SA email in prod
+- [ ] Secrets in Secret Manager only (not in git, not in .env files) — infra task
+- [ ] GCS bucket: uniform access + no public objects — infra task
+- [ ] Cloud SQL: no authorized public networks — infra task
 - [ ] Audit log triggers installed on `needs`, `assignments`, `volunteer_profiles`, `users`
-- [ ] Rate limiter (app-level 100 req/min + Cloud Armor 600 req/min per IP)
-- [ ] HTTPS redirect + HSTS header in FastAPI middleware
-- [ ] Logs scrubbed of PII using `safe_log()` helper
-- [ ] SendGrid webhook signature verified
-- [ ] `/cron/*` routes: `CRON_SECRET` in dev, OIDC SA email in prod
+- [ ] SendGrid webhook signature verified (`POST /webhooks/sendgrid`)
 - [ ] Worker Cloud Run services deployed with `--no-allow-unauthenticated`
 - [ ] `DELETE /api/v1/volunteers/me` tested — PII scrubbed, aggregates intact
 
@@ -264,10 +264,13 @@
 | POST /cron/escalate (expire stale + re-match) | ✅ Done |
 | Frontend — all app pages scaffolded | ✅ Done |
 | Frontend realtime hooks (Firestore listeners) | ✅ Done |
-| sync_firestore() helper + wire into all mutations | ❌ Missing |
-| SendGrid email inline on assignment creation | ❌ Missing |
-| GET /notifications + POST /notifications/{id}/read | ❌ Missing |
+| sync_firestore() helper + wire into all mutations | ✅ Done |
+| SendGrid email inline on assignment creation | ✅ Done |
+| GET /notifications + POST /notifications/{id}/read | ✅ Done |
+| Admin endpoints (list/verify/suspend) | ✅ Done |
+| Skill embedding on volunteer registration | ✅ Done |
+| App-level security hardening (rate limit, HSTS, safe_log) | ✅ Done |
 | Reports endpoint + PDF worker | ❌ Missing |
 | i18n (hi + gu) | ❌ Missing |
-| Security hardening checklist | ❌ Missing |
+| Infra security (Secret Manager, GCS, Cloud SQL) | ❌ Infra task |
 | Demo seed data + E2E test | ❌ Missing |

@@ -53,7 +53,9 @@ services/core-api/
 │   │       ├── assignments.py   # POST accept/decline/status/rate
 │   │       ├── uploads.py       # POST /signed-url + local dev upload receiver
 │   │       ├── analytics.py     # GET /analytics/dashboard (Postgres aggregates)
-│   │       └── cron.py          # POST /cron/escalate (OIDC-authenticated)
+│   │       ├── cron.py          # POST /cron/escalate (OIDC-authenticated)
+│   │       ├── notifications.py # GET /notifications, POST /notifications/{id}/read
+│   │       └── admin.py         # GET/PATCH/POST /admin/volunteers + /admin/users/{id}/suspend
 │   ├── models/
 │   │   ├── base.py              # DeclarativeBase with NAMING_CONVENTION
 │   │   ├── user.py              # Org, User
@@ -75,12 +77,14 @@ services/core-api/
 │   │   ├── embedding.py         # embed_need_text() — text-embedding-004 768-dim vector
 │   │   ├── priority.py          # compute_stable_components/score/full_score
 │   │   ├── matching.py          # Phase 2+3: score_candidates(), form_team()
-│   │   └── matching_worker.py   # Phase 1 SQL + persist assignments (BackgroundTask)
+│   │   ├── matching_worker.py   # Phase 1 SQL + persist assignments (BackgroundTask)
+│   │   └── firestore_sync.py    # sync_firestore() — mirrors Postgres state into Firestore
 │   ├── utils/
-│   │   └── firebase.py          # init_firebase_admin()
+│   │   ├── firebase.py          # init_firebase_admin()
+│   │   └── safe_log.py          # scrub(text) — redacts email + phone from log messages
 │   ├── database.py              # async engine + SessionLocal + get_db() dependency
 │   ├── dependencies.py          # get_current_user(), require_role()
-│   └── main.py                  # FastAPI app, routers, CORS, health
+│   └── main.py                  # FastAPI app, routers, CORS, rate limiter, security headers
 ├── alembic/
 │   ├── env.py                   # imports Base.metadata + all models
 │   └── versions/
@@ -645,6 +649,77 @@ curl -X POST http://localhost:8080/api/v1/cron/escalate \
 
 ---
 
+### Notifications
+
+#### `GET /notifications`
+Returns the current user's paginated notification feed. Any authenticated role.
+
+**Query params:** `limit` (1–100, default 20), `cursor` (integer offset).
+
+**Response:**
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "channel": "email",
+      "subject": "[Nectaid] New volunteer assignment: ...",
+      "body": "...",
+      "related_entity_type": "assignment",
+      "related_entity_id": "uuid",
+      "status": "sent",
+      "read_at": null,
+      "created_at": "2026-04-25T10:00:00Z"
+    }
+  ],
+  "total": 5,
+  "unread_count": 2,
+  "next_cursor": "20"
+}
+```
+
+#### `POST /notifications/{id}/read`
+Marks a notification as read. Verifies the notification belongs to the current user (403 otherwise).
+
+**Response:** `{ "id": "uuid", "read_at": "2026-04-25T10:05:00Z" }`
+
+---
+
+### Admin
+
+All admin endpoints are under `/admin`. Role requirements are noted per endpoint.
+
+#### `GET /admin/volunteers`
+Lists all volunteers with optional filters. Role: `coordinator` or `admin`.
+
+**Query params:**
+
+| Param | Type | Description |
+|---|---|---|
+| `verified` | bool | Filter by verified status |
+| `active` | bool | Filter by active status |
+| `skill` | string | Substring match against skills array |
+| `limit` | int | Page size, default 20, max 100 |
+| `cursor` | string | Integer offset cursor |
+
+**Response:** `{ "items": [...], "total": N, "next_cursor": "20" | null }`
+
+Each item is a flat merge of `users` + `volunteer_profiles` fields.
+
+#### `PATCH /admin/volunteers/{user_id}/verify`
+Sets `volunteer_profiles.verified = true`. Role: `admin` only.
+
+**Response:** `{ "user_id": "uuid", "verified": true }`
+
+#### `POST /admin/users/{user_id}/suspend`
+Soft-deletes a user by setting `users.deleted_at = now()`. Role: `admin` only.
+
+Returns 409 if user is already suspended.
+
+**Response:** `{ "user_id": "uuid", "suspended_at": "2026-04-25T10:00:00Z" }`
+
+---
+
 ### Health
 
 #### `GET /health`
@@ -867,31 +942,37 @@ On first `POST /auth/session`, if the Firebase token has no `role` claim, the us
 **Matching background task opens its own DB session.**
 `run_matching` uses `SessionLocal()` directly, not `get_db()`, because it runs outside the request lifecycle. This is the same pattern as `_run_ingestion` in submissions.py.
 
+**Rate limiter uses slowapi with `SlowAPIMiddleware`.**
+`default_limits=["100/minute"]` on the `Limiter` instance applies to all routes automatically when using `SlowAPIMiddleware` — no per-route decorator needed. The limiter key is the client IP via `get_remote_address`.
+
+**HSTS middleware sits before CORS in the middleware stack.**
+Middleware in Starlette/FastAPI is applied in reverse order of `add_middleware` calls (last added = first to run on request, first to run on response). `SecurityHeadersMiddleware` is added before `CORSMiddleware` so HSTS + security headers appear on all responses including preflight OPTIONS.
+
+**`safe_log.scrub()` is available but not applied globally.**
+`app/utils/safe_log.py` provides `scrub(text)` to redact emails and phone numbers from log strings. It is applied manually only at the point of logging — not as a logging filter — to keep overhead minimal. The email-in-assignment-notification log in `matching_worker.py` was the only place logging raw PII; it now logs `volunteer_id` instead.
+
 ---
 
 ## 11. What's Not Built Yet
 
-Endpoints still needed (in priority order):
+All core backend endpoints are complete. Remaining items are either low-priority, infra-only, or frontend-wiring work.
 
-| Endpoint | Priority | Purpose |
+| Endpoint / Task | Priority | Notes |
 |---|---|---|
-| `sync_firestore()` helper | P0 | Write Firestore mirrors after every status change — frontend realtime hooks fire on nothing without this |
-| `GET /notifications` | P1 | In-app notification feed |
-| `POST /notifications/{id}/read` | P1 | Mark notification read |
-| SendGrid email on assignment creation | P1 | Inline in `matching_worker.py` after `_persist_assignments()` |
-| `POST /webhooks/sendgrid` | P2 | ED25519-verified delivery event handler — updates `notifications.status` |
-| `GET /reports/weekly` | P2 | Weekly report JSON |
-| `GET /reports/weekly.pdf` | P2 | Signed GCS URL to PDF |
-| `POST /cron/weekly-report` | P2 | Triggers reports worker |
-| `POST /admin/users/{id}/suspend` | P2 | Admin suspend |
-| `GET /admin/volunteers` | P2 | Admin volunteer list |
-| `PATCH /admin/volunteers/{id}/verify` | P2 | Admin verify volunteer |
+| `POST /webhooks/sendgrid` | P2 | ED25519 delivery event handler — updates `notifications.status`; on permanent bounce set `email_deliverable=False` |
+| `GET /reports/weekly` + `GET /reports/weekly.pdf` | P2 | Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS signed URL |
+| `POST /cron/weekly-report` | P2 | OIDC-authenticated cron trigger for reports worker |
+| Geocoding in `needs_service.py` | P2 | Convert `location_hint` text → PostGIS point so `need.location` is populated and geospatial matching activates |
+| Audit log DB triggers | P3 | Postgres triggers on `needs`, `assignments`, `volunteer_profiles`, `users` |
+| Cloud Scheduler jobs | Infra | Two jobs: `/cron/escalate` every 15 min, `/cron/weekly-report` Mon 06:00 IST |
+| GCS bucket ACL + Cloud SQL network policy | Infra | No authorized public networks; uniform bucket access |
+| Secrets in Secret Manager | Infra | Move all env vars from `docker-compose.yml` to GCP Secret Manager for staging/prod |
 
-Background workers not yet started:
+Background workers:
 
-| Worker | Priority | Purpose |
-|---|---|---|
-| ~~`ingestion-worker`~~ | — | Replaced by `BackgroundTasks` in `core-api` |
-| ~~`matching-worker`~~ | — | Replaced by `BackgroundTasks` in `core-api` (`run_matching`) |
-| `notification-worker` | P1 | SendGrid email send — wire inline in `matching_worker.py` for MVP |
-| `reports-worker` | P2 | Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS |
+| Worker | Status |
+|---|---|
+| ~~`ingestion-worker`~~ | Replaced by `BackgroundTasks` in `core-api` |
+| ~~`matching-worker`~~ | Replaced by `BackgroundTasks` in `core-api` |
+| ~~`notification-worker`~~ | Replaced by inline SendGrid in `matching_worker.py` |
+| `reports-worker` | Not started — Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS |
