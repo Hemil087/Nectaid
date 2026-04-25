@@ -3,8 +3,10 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.analytics import router as analytics_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.assignments import router as assignments_router
+from app.api.v1.cron import router as cron_router
 from app.api.v1.needs import router as needs_router
 from app.api.v1.submissions import router as submissions_router
 from app.api.v1.uploads import router as uploads_router
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Nectaid API",
-    version="0.3.0",
+    version="0.4.0",
     docs_url="/api/v1/docs",
     openapi_url="/api/v1/openapi.json",
 )
@@ -35,11 +37,13 @@ app.include_router(needs_router,       prefix="/api/v1")
 app.include_router(submissions_router, prefix="/api/v1")
 app.include_router(assignments_router, prefix="/api/v1")
 app.include_router(uploads_router,     prefix="/api/v1")
+app.include_router(analytics_router,   prefix="/api/v1")
+app.include_router(cron_router,        prefix="/api/v1")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "core-api", "version": "0.3.0"}
+    return {"status": "ok", "service": "core-api", "version": "0.4.0"}
 
 
 @app.get("/")

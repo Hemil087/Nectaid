@@ -51,7 +51,9 @@ services/core-api/
 │   │       ├── needs.py         # Full needs CRUD + publish/cancel/explain/assignments
 │   │       ├── submissions.py   # POST /submissions + _run_ingestion background task
 │   │       ├── assignments.py   # POST accept/decline/status/rate
-│   │       └── uploads.py       # POST /signed-url + local dev upload receiver
+│   │       ├── uploads.py       # POST /signed-url + local dev upload receiver
+│   │       ├── analytics.py     # GET /analytics/dashboard (Postgres aggregates)
+│   │       └── cron.py          # POST /cron/escalate (OIDC-authenticated)
 │   ├── models/
 │   │   ├── base.py              # DeclarativeBase with NAMING_CONVENTION
 │   │   ├── user.py              # Org, User
@@ -579,6 +581,70 @@ Serves a previously uploaded local file.
 
 ---
 
+### Analytics
+
+#### `GET /analytics/dashboard`
+Returns coordinator dashboard aggregates computed directly from Postgres. Role: `coordinator` or `admin`.
+
+Scoped to `user.org_id` when set; platform-wide when `org_id` is NULL (admin or unaffiliated coordinator).
+
+**Response:**
+```json
+{
+  "open_needs_count": 12,
+  "critical_needs_count": 3,
+  "pending_review_count": 4,
+  "active_volunteers": 87,
+  "avg_response_time_minutes": 23.4,
+  "beneficiaries_served_this_week": 412,
+  "needs_by_status": {
+    "pending_review": 4,
+    "published": 2,
+    "matching_complete": 1,
+    "assigned": 3,
+    "in_progress": 2
+  },
+  "heatmap": [
+    { "lat": 22.31, "lng": 72.13, "count": 5 }
+  ]
+}
+```
+
+`heatmap` returns `[]` until `need.location` geocoding is wired (known gap — `need.location` is currently always `NULL`). `avg_response_time_minutes` is `null` when no responded assignments exist yet.
+
+---
+
+### Cron
+
+All cron endpoints require `Authorization: Bearer <token>`. Auth accepts either:
+- **Local dev:** `Bearer <CRON_SECRET>` where `CRON_SECRET` is set in `docker-compose.yml`
+- **Production:** Google OIDC token from `scheduler-invoker` SA; email verified against `GOOGLE_SA_EMAIL` env var
+
+#### `POST /cron/escalate`
+Expires stale `pending_accept` assignments and re-triggers matching for under-assigned needs.
+
+**Algorithm:**
+1. Find all `assignments` where `status = 'pending_accept'` AND `accept_deadline < now()`
+2. Mark them `expired`
+3. For each affected need: count accepted assignments; if `accepted_count < required_team_size` and need is not terminal, reset need to `published` and call `run_matching()` (which excludes previously expired volunteers via the NOT EXISTS filter)
+
+**Response:**
+```json
+{
+  "expired": 3,
+  "rematched_needs": ["uuid-1", "uuid-2"]
+}
+```
+
+**Test locally:**
+```bash
+# Add CRON_SECRET=dev-secret to docker-compose.yml env, then:
+curl -X POST http://localhost:8080/api/v1/cron/escalate \
+  -H "Authorization: Bearer dev-secret"
+```
+
+---
+
 ### Health
 
 #### `GET /health`
@@ -588,7 +654,7 @@ No auth required.
 {
   "status": "ok",
   "service": "core-api",
-  "version": "0.3.0"
+  "version": "0.4.0"
 }
 ```
 
@@ -810,11 +876,9 @@ Endpoints still needed (in priority order):
 | Endpoint | Priority | Purpose |
 |---|---|---|
 | `sync_firestore()` helper | P0 | Write Firestore mirrors after every status change — frontend realtime hooks fire on nothing without this |
-| `GET /analytics/dashboard` | P0 | Coordinator dashboard shows zeros — direct Postgres aggregates |
-| `POST /cron/escalate` | P1 | Cloud Scheduler: expire stale pending_accept assignments, re-trigger matching |
 | `GET /notifications` | P1 | In-app notification feed |
 | `POST /notifications/{id}/read` | P1 | Mark notification read |
-| SendGrid email on assignment creation | P1 | Inline in `matching_worker.py` after assignments are persisted |
+| SendGrid email on assignment creation | P1 | Inline in `matching_worker.py` after `_persist_assignments()` |
 | `POST /webhooks/sendgrid` | P2 | ED25519-verified delivery event handler — updates `notifications.status` |
 | `GET /reports/weekly` | P2 | Weekly report JSON |
 | `GET /reports/weekly.pdf` | P2 | Signed GCS URL to PDF |
@@ -829,5 +893,5 @@ Background workers not yet started:
 |---|---|---|
 | ~~`ingestion-worker`~~ | — | Replaced by `BackgroundTasks` in `core-api` |
 | ~~`matching-worker`~~ | — | Replaced by `BackgroundTasks` in `core-api` (`run_matching`) |
-| `notification-worker` | P1 | SendGrid email send — can be done inline in matching_worker for MVP |
+| `notification-worker` | P1 | SendGrid email send — wire inline in `matching_worker.py` for MVP |
 | `reports-worker` | P2 | Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS |

@@ -1,6 +1,6 @@
 # Nectaid — Master TODO
 
-> **Current status (Apr 25, 2026):** Backend ≈ Day 6, Frontend ≈ Day 3. Deadline: Apr 28 23:59 IST.
+> **Current status (Apr 25, 2026):** Backend ≈ Day 9, Frontend ≈ Day 3. Deadline: Apr 28 23:59 IST.
 > Items are ordered by dependency chain — don't skip ahead.
 
 ---
@@ -12,7 +12,7 @@
 - [x] ~~Create Pub/Sub topic `need.submitted` + push subscription~~ — skipped, using BackgroundTasks instead
 - [x] Wire Gemini 2.5 Flash multimodal call with structured output + strict JSON schema (`app/services/extraction.py`)
 - [x] Define `NeedExtraction` Pydantic model
-- [x] Add schema validation on every Gemini response; retry once with stricter prompt on schema mismatch
+- [x] Add schema validation on every Gemini response; retry once on schema mismatch
 - [x] Generate need embedding via `text-embedding-004` (`app/services/embedding.py`)
 - [x] Write `needs` row to Postgres in `pending_review` state (`app/services/needs_service.py`)
 - [x] Compute and persist priority score (stable components) on need creation
@@ -48,58 +48,57 @@
 ### Matching Pipeline (Day 5 — COMPLETE)
 
 - [x] `app/services/matching.py` — Phase 2+3: scoring + greedy/Hungarian team formation
-- [x] `app/services/matching_worker.py` — Phase 1 SQL (pgvector + PostGIS + availability + not-double-booked + not-previously-declined) + Phase 4 persist assignments
+- [x] `app/services/matching_worker.py` — Phase 1 SQL + Phase 4 persist assignments as BackgroundTask
 - [x] Insert `assignments` rows with `status = pending_accept` + `accept_deadline = now() + 15min`
 - [x] Transition `needs.status` to `matching_complete` on success
 - [x] Graceful degradation when `need.embedding` or `need.location` is None
 - [ ] Call `sync_firestore('assignments', id)` for each assignment created
-- [ ] Emit `assignment.created` event (inline SendGrid email) per assignment
+- [ ] Emit inline SendGrid email per assignment created
 
 ### Volunteer Assignment Endpoints (Day 6 — COMPLETE)
 
 - [x] `PATCH /volunteers/me` — update volunteer profile fields + re-generate embedding when skills change
 - [x] `GET /volunteers/me/assignments` — paginated list with embedded need details
-- [x] `POST /assignments/{id}/accept` — check deadline + transition need → `assigned` when all accepted
+- [x] `POST /assignments/{id}/accept` — check deadline + transition need to `assigned` when all accepted
 - [x] `POST /assignments/{id}/decline` — store reason
 - [x] `POST /assignments/{id}/status` — `in_progress` / `completed` with photo URLs + cascade need status
 - [x] `POST /assignments/{id}/rate` — coordinator rates; EMA reliability score update
 - [ ] Generate skill embedding on `POST /volunteers` registration (async after profile creation)
 - [ ] Install audit log trigger on `assignments` table
 
+### Analytics (Day 9 — COMPLETE)
+
+- [x] `GET /analytics/dashboard` — 8 Postgres aggregates: open/critical/pending counts, active volunteers, avg response time, beneficiaries served this week, needs-by-status map, heatmap (returns `[]` until geocoding is wired)
+
+### Escalation Cron (Day 7 — COMPLETE)
+
+- [x] `POST /cron/escalate` — expire stale `pending_accept` assignments, reset need to `published`, re-run `run_matching` for under-assigned needs
+- [x] Auth: `CRON_SECRET` env var for local dev; OIDC SA email verification for Cloud Run prod
+- [ ] Wire Cloud Scheduler every-15-min job → `POST /cron/escalate` (needs GCP console access)
+
 ### Realtime + Firestore Sync (Day 7 — NOT STARTED)
 
-- [ ] Implement `sync_firestore()` shared helper in `app/services/firestore_sync.py`
-  - Writes to `/needs_realtime/{need_id}` on need status changes
-  - Writes to `/task_status/{assignment_id}` on assignment status changes
-  - Writes to `/coordinator_feed/{org_id}/feed/{event_id}` on key events
-- [ ] Wire `sync_firestore('needs', id)` into ingestion pipeline (after pending_review creation)
-- [ ] Wire `sync_firestore('needs', id)` into publish, cancel, all status transitions in needs.py
-- [ ] Wire `sync_firestore('assignments', id)` into matching_worker.py after assignment creation
-- [ ] Wire `sync_firestore('assignments', id)` into accept/decline/status/rate in assignments.py
-- [ ] `POST /cron/escalate` endpoint (OIDC-authenticated, Cloud Scheduler)
-  - Find all `pending_accept` assignments past `accept_deadline`
-  - Mark them `expired`
-  - Re-publish matching for any under-assigned need (re-calls `run_matching`)
-- [ ] Wire Cloud Scheduler hourly job → `/cron/escalate`
+- [ ] Implement `sync_firestore()` helper in `app/services/firestore_sync.py`
+  - Writes `/needs_realtime/{need_id}` on need status changes
+  - Writes `/task_status/{assignment_id}` on assignment status changes
+  - Writes `/coordinator_feed/{org_id}/feed/{event_id}` on key events
+- [ ] Wire into ingestion pipeline after `pending_review` creation
+- [ ] Wire into `needs.py` on publish, cancel, all status transitions
+- [ ] Wire into `matching_worker.py` after assignment creation
+- [ ] Wire into `assignments.py` on accept, decline, status, rate
 
 ### Notification Worker (Day 8 — NOT STARTED)
 
 - [ ] Send assignment email inline in `matching_worker.py` after `_persist_assignments()`
-  - Use SendGrid SDK: `TO` = volunteer email, subject + body with need title/urgency/deadline/accept link
+  - SendGrid SDK: volunteer email, need title/urgency/deadline, deep link to `/assignments/{id}`
   - Write `notifications` row to Postgres (`status=queued`)
 - [ ] `GET /notifications` — paginated in-app notification feed
 - [ ] `POST /notifications/{id}/read` — mark as read
-- [ ] `POST /webhooks/sendgrid` — verify ED25519 signature, update `notifications.status`
+- [ ] `POST /webhooks/sendgrid` — ED25519 signature verification, update `notifications.status`
 - [ ] On permanent bounce: flag `email_deliverable=False` on volunteer profile
 
-### Analytics & Reports (Day 9 — NOT STARTED)
+### Reports (Day 9 — NOT STARTED)
 
-- [ ] `GET /analytics/dashboard` — coordinator aggregates from Postgres:
-  - `open_needs_count`, `critical_needs_count`, `pending_review_count`
-  - `active_volunteers` (last 30 days)
-  - `avg_response_time_minutes` (time to first accept)
-  - `beneficiaries_served_this_week`
-  - `heatmap` array (group by lat/lng rounded to 2 decimals)
 - [ ] `GET /reports/weekly?week=YYYY-WNN` — weekly report JSON
 - [ ] `GET /reports/weekly.pdf` — return 15-min signed GCS URL to PDF
 - [ ] Reports worker: Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS upload
@@ -115,7 +114,7 @@
 
 - [ ] Every route has `Depends(require_role(...))` or explicit "public" annotation
 - [ ] Every multipart upload validates MIME + size
-- [ ] Secrets in Secret Manager only
+- [ ] Secrets in Secret Manager only (not in git, not in .env files)
 - [ ] GCS bucket: uniform access + no public objects
 - [ ] Cloud SQL: no authorized public networks
 - [ ] Audit log triggers installed on `needs`, `assignments`, `volunteer_profiles`, `users`
@@ -123,7 +122,7 @@
 - [ ] HTTPS redirect + HSTS header in FastAPI middleware
 - [ ] Logs scrubbed of PII using `safe_log()` helper
 - [ ] SendGrid webhook signature verified
-- [ ] `/cron/*` routes verify OIDC token from `scheduler-invoker` SA
+- [ ] `/cron/*` routes: `CRON_SECRET` in dev, OIDC SA email in prod
 - [ ] Worker Cloud Run services deployed with `--no-allow-unauthenticated`
 - [ ] `DELETE /api/v1/volunteers/me` tested — PII scrubbed, aggregates intact
 
@@ -184,7 +183,7 @@
 ### Dashboard + Reports (Day 8)
 
 - [ ] `lib/api/analytics.ts` + `lib/hooks/use-analytics.ts`
-- [ ] `/dashboard` page fully wired to real API data
+- [ ] `/dashboard` page fully wired to `GET /analytics/dashboard`
 - [ ] `components/dashboard/stat-card.tsx` + `components/dashboard/stats-row.tsx`
 - [ ] `components/dashboard/needs-heatmap.tsx` — Leaflet + react-leaflet, SSR-safe (dynamic import)
 - [ ] `components/dashboard/critical-needs-alert.tsx` — banner for unassigned critical needs
@@ -219,8 +218,8 @@
 
 - [ ] Confirm Pub/Sub topics created: `need.submitted`, `need.published`, `assignment.created`, `task.completed`
 - [ ] Confirm Cloud Run services deployed for workers with `--no-allow-unauthenticated`
-- [ ] Cloud Scheduler job: hourly → `POST /cron/escalate`
-- [ ] Cloud Scheduler job: Mon 06:00 IST → `POST /cron/weekly-report`
+- [ ] Cloud Scheduler job: every 15 min → `POST /cron/escalate` (needs GCP console)
+- [ ] Cloud Scheduler job: Mon 06:00 IST → `POST /cron/weekly-report` (needs GCP console)
 - [ ] Budget alert configured at $50/month
 - [ ] GitHub Actions deploy workflow: test → build → push → Cloud Run deploy → Alembic migration
 - [ ] Workload Identity Federation configured (no long-lived SA keys in CI)
@@ -233,7 +232,7 @@
 - [ ] Seed 10 test needs (mix of urgencies and team sizes, pre-published)
 - [ ] Firebase Auth: 1 coordinator account, 1 admin account, 2 volunteer accounts
 - [ ] Verify SendGrid sender identity; test email sends end-to-end
-- [ ] Seed 1 week of historical data for weekly report
+- [ ] Seed 1 week of historical data so dashboard stats are non-zero
 - [ ] Pre-generate weekly PDF report for a historical week
 - [ ] Run full E2E: submission → AI extraction → coordinator review → publish → matching → volunteer accept → complete → rate
 - [ ] Record screen demo: priority breakdown tooltip, match score tooltip, team-of-3 flow
@@ -261,12 +260,13 @@
 | Uploads signed-URL endpoint (GCS + local dev fallback) | ✅ Done |
 | Assignment endpoints (accept/decline/status/rate) | ✅ Done |
 | PATCH /volunteers/me + GET /volunteers/me/assignments | ✅ Done |
+| GET /analytics/dashboard (8 Postgres aggregates) | ✅ Done |
+| POST /cron/escalate (expire stale + re-match) | ✅ Done |
 | Frontend — all app pages scaffolded | ✅ Done |
 | Frontend realtime hooks (Firestore listeners) | ✅ Done |
 | sync_firestore() helper + wire into all mutations | ❌ Missing |
-| Escalation cron (POST /cron/escalate) | ❌ Missing |
-| Notification worker + SendGrid email | ❌ Missing |
-| Analytics dashboard endpoint | ❌ Missing |
+| SendGrid email inline on assignment creation | ❌ Missing |
+| GET /notifications + POST /notifications/{id}/read | ❌ Missing |
 | Reports endpoint + PDF worker | ❌ Missing |
 | i18n (hi + gu) | ❌ Missing |
 | Security hardening checklist | ❌ Missing |
