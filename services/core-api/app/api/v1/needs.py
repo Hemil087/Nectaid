@@ -13,6 +13,7 @@ from app.dependencies import get_current_user, require_role
 from app.models import Need, User
 from app.models.assignment import Assignment
 from app.schemas.need import NeedResponse, NeedsListResponse
+from app.services.firestore_sync import sync_firestore
 from app.services.matching_worker import run_matching
 from app.services.priority import (
     compute_full_score,
@@ -197,6 +198,17 @@ async def publish_need(
     await db.commit()
     await db.refresh(need)
     background_tasks.add_task(run_matching, str(need.id))
+
+    await sync_firestore("needs", str(need.id), db)
+    if need.org_id:
+        from uuid import uuid4
+        await sync_firestore(
+            "coordinator_feed", str(uuid4()), db,
+            org_id=str(need.org_id),
+            event_type="need_published",
+            extra={"need_id": str(need.id), "title": need.title, "urgency": need.urgency},
+        )
+
     return _serialize_need(need)
 
 
@@ -219,6 +231,9 @@ async def cancel_need(
     need.updated_at = datetime.now(tz=timezone.utc)
     await db.commit()
     await db.refresh(need)
+
+    await sync_firestore("needs", str(need.id), db)
+
     return _serialize_need(need)
 
 

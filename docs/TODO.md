@@ -76,22 +76,22 @@
 - [x] Auth: `CRON_SECRET` env var for local dev; OIDC SA email verification for Cloud Run prod
 - [ ] Wire Cloud Scheduler every-15-min job → `POST /cron/escalate` (needs GCP console access)
 
-### Realtime + Firestore Sync (Day 7 — NOT STARTED)
+### Realtime + Firestore Sync (Day 7 — COMPLETE)
 
-- [ ] Implement `sync_firestore()` helper in `app/services/firestore_sync.py`
+- [x] Implement `sync_firestore()` helper in `app/services/firestore_sync.py`
   - Writes `/needs_realtime/{need_id}` on need status changes
   - Writes `/task_status/{assignment_id}` on assignment status changes
   - Writes `/coordinator_feed/{org_id}/feed/{event_id}` on key events
-- [ ] Wire into ingestion pipeline after `pending_review` creation
-- [ ] Wire into `needs.py` on publish, cancel, all status transitions
-- [ ] Wire into `matching_worker.py` after assignment creation
-- [ ] Wire into `assignments.py` on accept, decline, status, rate
+- [x] Wire into ingestion pipeline after extraction (need_created event)
+- [x] Wire into `needs.py` on publish (need_published event) and cancel
+- [x] Wire into `matching_worker.py` after assignment creation (assignment_created event)
+- [x] Wire into `assignments.py` on accept, decline, status, rate
 
-### Notification Worker (Day 8 — NOT STARTED)
+### Notification Worker (Day 8 — PARTIAL)
 
-- [ ] Send assignment email inline in `matching_worker.py` after `_persist_assignments()`
+- [x] Send assignment email inline in `matching_worker.py` after `_persist_assignments()`
   - SendGrid SDK: volunteer email, need title/urgency/deadline, deep link to `/assignments/{id}`
-  - Write `notifications` row to Postgres (`status=queued`)
+  - Write `notifications` row to Postgres (`status=queued → sent/failed`)
 - [ ] `GET /notifications` — paginated in-app notification feed
 - [ ] `POST /notifications/{id}/read` — mark as read
 - [ ] `POST /webhooks/sendgrid` — ED25519 signature verification, update `notifications.status`

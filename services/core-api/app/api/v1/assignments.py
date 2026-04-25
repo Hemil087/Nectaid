@@ -24,6 +24,7 @@ from app.dependencies import get_current_user, require_role
 from app.models import Need, User
 from app.models.assignment import Assignment
 from app.models.volunteer import VolunteerProfile
+from app.services.firestore_sync import sync_firestore
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,7 @@ async def accept_assignment(
     await db.commit()
     await db.refresh(a)
 
+    await sync_firestore("assignments", str(assignment_id), db)
     logger.info("assignment_accepted id=%s volunteer=%s", assignment_id, current_user.id)
     return _serialize(a)
 
@@ -181,6 +183,7 @@ async def decline_assignment(
     await db.commit()
     await db.refresh(a)
 
+    await sync_firestore("assignments", str(assignment_id), db)
     logger.info("assignment_declined id=%s volunteer=%s", assignment_id, current_user.id)
     return _serialize(a)
 
@@ -236,6 +239,7 @@ async def update_assignment_status(
     await db.commit()
     await db.refresh(a)
 
+    await sync_firestore("assignments", str(assignment_id), db)
     logger.info("assignment_status id=%s -> %s volunteer=%s", assignment_id, new_status, current_user.id)
     return _serialize(a)
 
@@ -285,6 +289,7 @@ async def rate_assignment(
     await db.commit()
     await db.refresh(a)
 
+    await sync_firestore("assignments", str(assignment_id), db)
     logger.info(
         "assignment_rated id=%s rating=%d coordinator=%s",
         assignment_id, rating, current_user.id,

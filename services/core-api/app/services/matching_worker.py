@@ -12,7 +12,9 @@ No Pub/Sub, no separate Cloud Run service — runs inline for MVP.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -23,6 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import SessionLocal
 from app.models.assignment import Assignment
 from app.models.need import Need
+from app.models.notification import Notification
+from app.models.user import User
+from app.services.firestore_sync import sync_firestore
 from app.services.matching import CandidateVolunteer, form_team
 
 logger = logging.getLogger(__name__)
@@ -235,6 +240,110 @@ async def _persist_assignments(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Email notifications
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def _notify_volunteers(
+    db: AsyncSession,
+    assignments: list[Assignment],
+    need: Need,
+) -> None:
+    """
+    Send assignment email to each volunteer and write a notifications row.
+    Non-fatal per volunteer — exceptions are caught and logged individually.
+    Flushes notification rows but does NOT commit; caller commits.
+    """
+    api_key = os.getenv("SENDGRID_API_KEY", "")
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+    for assignment in assignments:
+        notif: Notification | None = None
+        try:
+            volunteer = await db.get(User, assignment.volunteer_id)
+            if not volunteer or not volunteer.email:
+                logger.warning(
+                    "email_skip assignment=%s: no email for volunteer=%s",
+                    assignment.id, assignment.volunteer_id,
+                )
+                continue
+
+            deadline_str = (
+                assignment.accept_deadline.strftime("%b %d, %Y %H:%M UTC")
+                if assignment.accept_deadline else "N/A"
+            )
+            need_deadline_str = (
+                need.deadline.strftime("%b %d, %Y") if need.deadline else "No deadline set"
+            )
+            deep_link = f"{frontend_url}/assignments/{assignment.id}"
+            subject = f"[Nectaid] New volunteer assignment: {need.title}"
+            text_body = (
+                f"You've been matched to: {need.title} ({need.urgency}). "
+                f"Deadline: {need_deadline_str}. "
+                f"Please accept or decline by {deadline_str}. "
+                f"View: {deep_link}"
+            )
+            html_body = f"""
+<p>You have been matched to a new volunteer assignment on <strong>Nectaid</strong>.</p>
+<h3>{need.title}</h3>
+<table>
+  <tr><td><strong>Urgency</strong></td><td>{need.urgency.capitalize()}</td></tr>
+  <tr><td><strong>Need type</strong></td><td>{need.need_type.capitalize()}</td></tr>
+  <tr><td><strong>Need deadline</strong></td><td>{need_deadline_str}</td></tr>
+  <tr><td><strong>Please respond by</strong></td><td>{deadline_str}</td></tr>
+</table>
+<p><a href="{deep_link}" style="padding:10px 20px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none">
+  View Assignment
+</a></p>
+<p style="color:#6b7280;font-size:12px">Nectaid — connecting communities with volunteers</p>
+"""
+
+            notif = Notification(
+                user_id=assignment.volunteer_id,
+                channel="email",
+                subject=subject,
+                body=text_body,
+                related_entity_type="assignment",
+                related_entity_id=assignment.id,
+                status="queued",
+            )
+            db.add(notif)
+            await db.flush()
+            await db.refresh(notif)
+
+            if not api_key:
+                logger.warning(
+                    "SENDGRID_API_KEY not set — notification row created, email skipped "
+                    "assignment=%s", assignment.id,
+                )
+                continue
+
+            from sendgrid import SendGridAPIClient  # type: ignore[import-untyped]
+            from sendgrid.helpers.mail import Mail  # type: ignore[import-untyped]
+
+            message = Mail(
+                from_email="noreply@nectaid.org",
+                to_emails=volunteer.email,
+                subject=subject,
+                html_content=html_body,
+            )
+            response = await asyncio.to_thread(
+                SendGridAPIClient(api_key).send, message
+            )
+            notif.status = "sent"
+            notif.sent_at = datetime.now(timezone.utc)
+            notif.provider_message_id = (
+                response.headers.get("X-Message-Id", "") if response.headers else ""
+            )
+            logger.info("email_sent assignment=%s to=%s", assignment.id, volunteer.email)
+
+        except Exception as exc:
+            logger.error("email_failed assignment=%s: %s", assignment.id, exc)
+            if notif is not None:
+                notif.status = "failed"
+                notif.error = str(exc)[:500]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Public entry point — called as BackgroundTask
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -279,8 +388,9 @@ async def run_matching(need_id: str) -> None:
                 )
                 return
 
-            # Phase 4 — persist
-            await _persist_assignments(db, need, team)
+            # Phase 4 — persist assignments + send emails
+            assignments = await _persist_assignments(db, need, team)
+            await _notify_volunteers(db, assignments, need)
 
             need.status = "matching_complete"
             need.updated_at = datetime.now(timezone.utc)
@@ -290,6 +400,22 @@ async def run_matching(need_id: str) -> None:
                 "matching_ok need=%s team_size=%d status=matching_complete",
                 need_id, len(team),
             )
+
+            # Sync to Firestore after commit (non-fatal)
+            for a in assignments:
+                await sync_firestore("assignments", str(a.id), db)
+                if need.org_id:
+                    await sync_firestore(
+                        "coordinator_feed", str(uuid.uuid4()), db,
+                        org_id=str(need.org_id),
+                        event_type="assignment_created",
+                        extra={
+                            "assignment_id": str(a.id),
+                            "need_id": str(a.need_id),
+                            "volunteer_id": str(a.volunteer_id),
+                        },
+                    )
+            await sync_firestore("needs", str(need.id), db)
 
         except Exception as exc:
             await db.rollback()

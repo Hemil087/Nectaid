@@ -14,6 +14,7 @@ from app.models import RawSubmission, User
 from app.schemas.submission import SubmissionResponse
 from app.services.embedding import embed_need_text
 from app.services.extraction import extract_need
+from app.services.firestore_sync import sync_firestore
 from app.services.needs_service import create_need_from_extraction
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,26 @@ async def _run_ingestion(
             await db.commit()
 
             logger.info("ingestion_ok submission=%s need=%s", submission_id, need.id)
+
+            # Sync to Firestore (non-fatal)
+            await sync_firestore("needs", str(need.id), db)
+            org_id: str | None = None
+            if sub.submitted_by:
+                submitter = await db.get(User, sub.submitted_by)
+                if submitter and submitter.org_id:
+                    org_id = str(submitter.org_id)
+            if org_id:
+                await sync_firestore(
+                    "coordinator_feed", str(uuid.uuid4()), db,
+                    org_id=org_id,
+                    event_type="need_created",
+                    extra={
+                        "need_id": str(need.id),
+                        "title": need.title,
+                        "urgency": need.urgency,
+                        "need_type": need.need_type,
+                    },
+                )
 
         except Exception as exc:
             await db.rollback()
