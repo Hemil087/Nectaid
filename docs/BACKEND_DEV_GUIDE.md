@@ -55,6 +55,7 @@ services/core-api/
 │   │       ├── analytics.py     # GET /analytics/dashboard (Postgres aggregates)
 │   │       ├── cron.py          # POST /cron/escalate (OIDC-authenticated)
 │   │       ├── notifications.py # GET /notifications, POST /notifications/{id}/read
+│   │       ├── reports.py       # GET /reports/weekly (7 Postgres aggregates)
 │   │       └── admin.py         # GET/PATCH/POST /admin/volunteers + /admin/users/{id}/suspend
 │   ├── models/
 │   │   ├── base.py              # DeclarativeBase with NAMING_CONVENTION
@@ -88,7 +89,8 @@ services/core-api/
 ├── alembic/
 │   ├── env.py                   # imports Base.metadata + all models
 │   └── versions/
-│       └── abcd0b71c7eb_initial_schema.py
+│       ├── abcd0b71c7eb_initial_schema.py
+│       └── c1d2e3f4a5b6_audit_log_triggers.py  # PL/pgSQL triggers on 4 tables
 ├── alembic.ini                  # points to postgresql+psycopg2://
 ├── Dockerfile                   # COPY . . (includes alembic/)
 └── requirements.txt
@@ -736,6 +738,49 @@ Returns 409 if user is already suspended.
 
 ---
 
+### Reports
+
+#### `GET /reports/weekly?week=YYYY-WNN`
+Returns weekly operational aggregates. Role: `coordinator` or `admin`.
+
+**Query params:**
+
+| Param | Type | Description |
+|---|---|---|
+| `week` | string | ISO week: `YYYY-WNN` e.g. `2026-W17` |
+
+Week boundaries are computed in UTC (`Monday 00:00 → Sunday 23:59:59`).
+
+**Response:**
+```json
+{
+  "week": "2026-W17",
+  "week_start": "2026-04-20T00:00:00+00:00",
+  "week_end": "2026-04-27T00:00:00+00:00",
+  "total_needs_submitted": 14,
+  "needs_resolved": 9,
+  "avg_time_to_accept_by_urgency": {
+    "critical": 8.3,
+    "high": 22.1
+  },
+  "beneficiaries_served": 312,
+  "volunteer_hours_logged": 47.5,
+  "top_need_types": [
+    { "need_type": "medical", "count": 6 },
+    { "need_type": "food", "count": 4 }
+  ],
+  "top_locations": [
+    { "location": "Kathlal, Kheda", "count": 3 }
+  ]
+}
+```
+
+`avg_time_to_accept_by_urgency` — minutes between `assigned_at` and `responded_at` for accepted assignments that responded within the week. Excludes `declined`, `expired`, `no_show`, `cancelled`.
+
+`volunteer_hours_logged` — sum of `completed_at - started_at` for assignments that completed within the week.
+
+---
+
 ### Health
 
 #### `GET /health`
@@ -967,6 +1012,15 @@ Middleware in Starlette/FastAPI is applied in reverse order of `add_middleware` 
 **`safe_log.scrub()` is available but not applied globally.**
 `app/utils/safe_log.py` provides `scrub(text)` to redact emails and phone numbers from log strings. It is applied manually only at the point of logging — not as a logging filter — to keep overhead minimal. The email-in-assignment-notification log in `matching_worker.py` was the only place logging raw PII; it now logs `volunteer_id` instead.
 
+**Audit log triggers use a Postgres session variable, not an app-level parameter.**
+`app/dependencies.py` calls `SELECT set_config('app.current_user_id', :uid, true)` after every successful auth. The `true` flag makes this transactional — the variable is scoped to the current transaction and cleared automatically. The PL/pgSQL trigger function reads it with `current_setting('app.current_user_id', true)` (second arg = non-fatal if absent) and casts it to UUID. If absent or malformed, `actor_user_id` is stored as NULL — this handles cron jobs and direct DB writes gracefully.
+
+**Audit triggers handle `volunteer_profiles` PK difference.**
+Most tables use `id` as primary key. `volunteer_profiles` uses `user_id`. The trigger function branches on `TG_TABLE_NAME = 'volunteer_profiles'` to resolve the correct column — otherwise `v_entity_id` would be NULL for every volunteer profile mutation.
+
+**Prompt injection defense flags input, doesn't block it.**
+`extraction.py` scans the raw submission text for injection patterns (`_INJECTION_RE`) before calling Gemini. If a match is found, it logs a warning with `submission_id` and `pattern`, then continues extraction but forces `confidence = 0.1` on the result. The coordinator sees a low-confidence extraction and can choose to reject or manually correct it. The design avoids silently dropping submissions from real users who happen to use phrases like "disregard the above" in a genuine field report.
+
 ---
 
 ## 11. What's Not Built Yet
@@ -976,10 +1030,10 @@ All core backend endpoints are complete. Remaining items are either low-priority
 | Endpoint / Task | Priority | Notes |
 |---|---|---|
 | `POST /webhooks/sendgrid` | P2 | ED25519 delivery event handler — updates `notifications.status`; on permanent bounce set `email_deliverable=False` |
-| `GET /reports/weekly` + `GET /reports/weekly.pdf` | P2 | Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS signed URL |
+| `GET /reports/weekly.pdf` | P2 | 15-min signed GCS URL to WeasyPrint-generated PDF; blocked on GCS billing |
+| Reports worker (narrative + PDF) | P2 | Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS upload |
 | `POST /cron/weekly-report` | P2 | OIDC-authenticated cron trigger for reports worker |
 | Geocoding in `needs_service.py` | P2 | Convert `location_hint` text → PostGIS point so `need.location` is populated and geospatial matching activates |
-| Audit log DB triggers | P3 | Postgres triggers on `needs`, `assignments`, `volunteer_profiles`, `users` |
 | Cloud Scheduler jobs | Infra | Two jobs: `/cron/escalate` every 15 min, `/cron/weekly-report` Mon 06:00 IST |
 | GCS bucket ACL + Cloud SQL network policy | Infra | No authorized public networks; uniform bucket access |
 | Secrets in Secret Manager | Infra | Move all env vars from `docker-compose.yml` to GCP Secret Manager for staging/prod |

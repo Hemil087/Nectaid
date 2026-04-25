@@ -18,7 +18,7 @@
 - [x] Compute and persist priority score (stable components) on need creation
 - [x] Background task wired into `POST /submissions`
 - [x] `raw_submissions.status` lifecycle: `received → processing → extracted` (or `failed`)
-- [ ] Add prompt injection defense: scan extracted fields for suspicious patterns
+- [x] Add prompt injection defense: scan extracted fields for suspicious patterns
 - [x] Call `sync_firestore('needs', id)` so coordinator's review queue listener fires
 - [ ] Run Gemini eval: 10 realistic sample submissions → check extraction outputs
 
@@ -36,7 +36,7 @@
 - [x] `POST /needs/{id}/cancel` — coordinator cancels a need
 - [x] `GET /needs/{id}/explain` — priority breakdown JSON
 - [x] `GET /needs/{id}/assignments` — list all assignments for a need
-- [ ] Install audit log trigger on `needs` table
+- [x] Install audit log trigger on `needs` table
 
 ### Priority Scoring (Day 5 — COMPLETE)
 
@@ -64,7 +64,7 @@
 - [x] `POST /assignments/{id}/status` — `in_progress` / `completed` with photo URLs + cascade need status
 - [x] `POST /assignments/{id}/rate` — coordinator rates; EMA reliability score update
 - [x] Generate skill embedding on `POST /volunteers` registration (async BackgroundTask)
-- [ ] Install audit log trigger on `assignments` table
+- [x] Install audit log trigger on `assignments` table
 
 ### Analytics (Day 9 — COMPLETE)
 
@@ -97,9 +97,9 @@
 - [ ] `POST /webhooks/sendgrid` — ED25519 signature verification, update `notifications.status`
 - [ ] On permanent bounce: flag `email_deliverable=False` on volunteer profile
 
-### Reports (Day 9 — NOT STARTED)
+### Reports (Day 9 — PARTIAL)
 
-- [ ] `GET /reports/weekly?week=YYYY-WNN` — weekly report JSON
+- [x] `GET /reports/weekly?week=YYYY-WNN` — weekly report JSON (7 Postgres aggregates, coordinator/admin)
 - [ ] `GET /reports/weekly.pdf` — return 15-min signed GCS URL to PDF
 - [ ] Reports worker: Postgres aggregates → Gemini narrative → WeasyPrint PDF → GCS upload
 - [ ] `POST /cron/weekly-report` (OIDC-authenticated) → trigger reports worker
@@ -121,7 +121,7 @@
 - [ ] Secrets in Secret Manager only (not in git, not in .env files) — infra task
 - [ ] GCS bucket: uniform access + no public objects — infra task
 - [ ] Cloud SQL: no authorized public networks — infra task
-- [ ] Audit log triggers installed on `needs`, `assignments`, `volunteer_profiles`, `users`
+- [x] Audit log triggers installed on `needs`, `assignments`, `volunteer_profiles`, `users`
 - [ ] SendGrid webhook signature verified (`POST /webhooks/sendgrid`)
 - [ ] Worker Cloud Run services deployed with `--no-allow-unauthenticated`
 - [ ] `DELETE /api/v1/volunteers/me` tested — PII scrubbed, aggregates intact
@@ -165,7 +165,7 @@
 - [ ] Toast notifications on accept/decline/status mutations (sonner)
 - [ ] Role-filter sidebar nav (hide coordinator items from volunteer view)
 - [ ] Photo upload in completion form — wire `POST /uploads/signed-url` + `PUT` to GCS/local
-- [ ] `/reports` page — wire to `GET /reports/weekly` + PDF download (blocked on backend)
+- [ ] `/reports` page — wire to `GET /reports/weekly` + week picker + recharts bar chart (backend ready)
 - [ ] `components/dashboard/needs-heatmap.tsx` — Leaflet map (blocked until `need.location` geocoding is wired)
 - [ ] Skeleton loaders on pages that are missing them
 - [ ] Error boundaries on all pages
@@ -231,7 +231,10 @@
 | Frontend pages fully wired to API (dashboard, needs, assignments, notifications) | ✅ Done |
 | Notification bell with live unread badge | ✅ Done |
 | Demo seed script (20 volunteers, 10 needs, historical assignments) | ✅ Done |
-| Reports endpoint + PDF worker | ❌ Missing |
+| GET /reports/weekly (JSON aggregates) | ✅ Done |
+| Audit log triggers (needs, assignments, volunteer_profiles, users) | ✅ Done |
+| Prompt injection defense in extraction pipeline | ✅ Done |
+| Reports PDF worker + /reports/weekly.pdf | ❌ Missing |
 | i18n (hi + gu) | ❌ Missing |
 | Infra security (Secret Manager, GCS, Cloud SQL) | ❌ Infra task |
 | Firebase Auth accounts wired to seed users | ❌ Manual step |
