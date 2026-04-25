@@ -68,7 +68,9 @@ RULES:
 5. `beneficiary_count` — extract as integer if stated; else null.
 6. `required_skills` — normalize to canonical lowercase tags like
    "pediatrician", "nurse", "teacher-math", "carpenter", "translator-gujarati".
-7. `location_hint` — village/district/state if identifiable; else null.
+7. `location_hint` — Extract ANY geographic reference mentioned (village, town, district, state, landmark).
+   Prefer the most specific level available. If multiple levels are mentioned (e.g. "Chhota Bharwara village, Kheda district"),
+   include all of them as a comma-separated string. Only return null if NO location is mentioned at all.
 8. DO NOT include personally identifiable information (names, phone numbers)
    in `description_en` or `description_original`. Replace them with [PERSON]
    or [PHONE].\
@@ -111,7 +113,7 @@ _GENERATION_CONFIG = GenerationConfig(
     response_mime_type="application/json",
     response_schema=_RESPONSE_SCHEMA,
     temperature=0.2,
-    max_output_tokens=1024,
+    max_output_tokens=32768,
 )
 
 # Coercion maps — catch anything that still slips past schema enforcement
@@ -145,7 +147,18 @@ def _init_vertexai() -> None:
         return
     project = os.getenv("PROJECT_ID", "nectaid-dev")
     location = os.getenv("REGION", "asia-south1")
-    vertexai.init(project=project, location=location)
+
+    credentials = None
+    sa_json_str = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON") or os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+    if sa_json_str:
+        from google.oauth2 import service_account  # type: ignore[import-untyped]
+        info = json.loads(sa_json_str.strip().strip("'\""))
+        credentials = service_account.Credentials.from_service_account_info(
+            info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+
+    vertexai.init(project=project, location=location, credentials=credentials)
     _VERTEXAI_INITIALIZED = True
 
 
