@@ -9,14 +9,19 @@
 
 ### AI / Ingestion Pipeline (Day 3 — MOST CRITICAL BLOCKER)
 
-- [ ] Create Pub/Sub topic `need.submitted` + push subscription pointing to `ingestion-worker`
-- [ ] Scaffold `services/workers/ingestion/` as a real FastAPI/Cloud Run app (not just `__init__.py`)
-- [ ] Wire Gemini 2.5 Flash multimodal call with structured output + strict JSON schema
-- [ ] Define `NeedExtraction` Pydantic model (title, description_en, location, need_type, urgency, beneficiaries, required_skills, deadline, confidence)
-- [ ] Add schema validation on every Gemini response; retry once on failure, dead-letter on second fail
+> **Architecture note:** Ingestion runs as a FastAPI `BackgroundTasks` task inside `core-api`, not a separate Pub/Sub worker. This is intentional for MVP — avoids Cloud Run + Pub/Sub setup complexity while the pipeline logic is identical. Swap to a real worker post-hackathon if needed.
+
+- [ ] ~~Create Pub/Sub topic `need.submitted` + push subscription pointing to `ingestion-worker`~~ — skipped, using BackgroundTasks instead
+- [ ] ~~Scaffold `services/workers/ingestion/` as a real FastAPI/Cloud Run app~~ — not needed for MVP
+- [x] Wire Gemini 2.5 Flash multimodal call with structured output + strict JSON schema (`app/services/extraction.py`)
+- [x] Define `NeedExtraction` Pydantic model (title, description_en, location, need_type, urgency, beneficiaries, required_skills, deadline, confidence)
+- [x] Add schema validation on every Gemini response; retry once with stricter prompt on schema mismatch
+- [x] Generate need embedding via `text-embedding-004` (768-dim) from extracted text (`app/services/embedding.py`)
+- [x] Write `needs` row to Postgres in `pending_review` state (`app/services/needs_service.py`)
+- [x] Compute and persist priority score (stable components) on need creation
+- [x] Background task wired into `POST /submissions` — returns immediately, pipeline runs async
+- [x] `raw_submissions.status` lifecycle: `received → processing → extracted` (or `failed` with error logged)
 - [ ] Add prompt injection defense: scan extracted fields for suspicious patterns (`"ignore previous"`, `"system:"`)
-- [ ] Generate need embedding via `text-embedding-004` (768-dim) from extracted text
-- [ ] Write `needs` row to Postgres in `pending_review` state
 - [ ] Call `sync_firestore('needs', id)` so coordinator's review queue listener fires
 - [ ] Implement `sync_firestore()` shared helper (if not already in shared package)
 - [ ] Run Gemini eval: 10 realistic sample submissions (mixed languages, text + photo) → check extraction outputs
@@ -39,9 +44,9 @@
 
 ### Priority Scoring (Day 5)
 
-- [ ] Implement `compute_priority()` in Python (deterministic formula using urgency, severity, beneficiaries, deadline, resource_difficulty)
-- [ ] `time_pressure` computed on-read from `deadline`, NOT persisted
-- [ ] Store priority breakdown JSONB on publish
+- [x] Implement `compute_priority()` in Python (`app/services/priority.py`) — deterministic formula: urgency + severity + beneficiary_scale − resource_difficulty
+- [x] `time_pressure` computed on-read from `deadline`, NOT persisted
+- [x] Store priority breakdown JSONB on need creation (in ingestion pipeline)
 - [ ] Return `time_pressure` + full breakdown in all `GET /needs` and `GET /needs/{id}` responses
 
 ### Matching Worker (Day 5 — CRITICAL)
@@ -284,10 +289,10 @@
 | Volunteer self-registration (signup flow) | ✅ Done |
 | Frontend — all app pages built | ✅ Done |
 | Frontend realtime hooks (Firestore listeners) | ✅ Done |
-| Priority scoring service | ✅ Done |
+| Priority scoring service (stable + time_pressure formula) | ✅ Done |
 | Matching algorithm service | ✅ Done |
 | Needs endpoints (get/patch/publish/cancel/explain/assignments) | ✅ Done |
-| Pub/Sub + ingestion worker (Gemini + embeddings) | ❌ Missing |
+| AI ingestion pipeline (BackgroundTasks: extraction + embedding + priority) | ✅ Done |
 | Uploads signed-URL endpoint | ❌ Missing |
 | Matching worker | ❌ Missing |
 | Volunteer assignment endpoints | ❌ Missing |

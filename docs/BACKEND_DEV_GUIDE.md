@@ -13,8 +13,9 @@
 5. [Authentication & Authorization](#5-authentication--authorization)
 6. [API Endpoints (Built)](#6-api-endpoints-built)
 7. [Schemas](#7-schemas)
-8. [Key Decisions & Gotchas](#8-key-decisions--gotchas)
-9. [What's Not Built Yet](#9-whats-not-built-yet)
+8. [Ingestion Pipeline](#8-ingestion-pipeline)
+9. [Key Decisions & Gotchas](#9-key-decisions--gotchas)
+10. [What's Not Built Yet](#10-whats-not-built-yet)
 
 ---
 
@@ -47,7 +48,7 @@ services/core-api/
 │   │       ├── auth.py          # POST /auth/session, GET /auth/me
 │   │       ├── volunteers.py    # POST/GET/DELETE /volunteers
 │   │       ├── needs.py         # GET /needs
-│   │       └── submissions.py   # POST /submissions
+│   │       └── submissions.py   # POST /submissions + _run_ingestion background task
 │   ├── models/
 │   │   ├── base.py              # DeclarativeBase with NAMING_CONVENTION
 │   │   ├── user.py              # Org, User
@@ -63,9 +64,14 @@ services/core-api/
 │   │   ├── volunteer.py         # VolunteerCreate, VolunteerResponse
 │   │   ├── need.py              # NeedResponse, NeedsListResponse
 │   │   └── submission.py        # SubmissionCreate, SubmissionResponse
+│   ├── services/
+│   │   ├── extraction.py        # extract_need() — Gemini 2.5 Flash multimodal extraction
+│   │   ├── needs_service.py     # create_need_from_extraction() — persist Need row
+│   │   ├── embedding.py         # embed_need_text() — text-embedding-004 768-dim vector
+│   │   └── priority.py          # compute_stable_components/score/full_score
 │   ├── utils/
 │   │   └── firebase.py          # init_firebase_admin()
-│   ├── database.py              # async engine + get_db() dependency
+│   ├── database.py              # async engine + SessionLocal + get_db() dependency
 │   ├── dependencies.py          # get_current_user(), require_role()
 │   └── main.py                  # FastAPI app, routers, CORS, health
 ├── alembic/
@@ -363,20 +369,22 @@ Note: cursor is currently offset-based. Will be replaced with keyset pagination 
 ### Submissions
 
 #### `POST /submissions`
-Creates a raw submission. Role: `coordinator` or `admin`.
+Creates a raw submission and fires the ingestion pipeline as a background task. Role: `coordinator` or `admin`.
 
-Server always sets `source='webform'` and `status='received'` — client cannot override these.
+**Request:** multipart/form-data (not JSON)
 
-**Request body:**
-```json
-{
-  "raw_text": "There are 40 flood-affected families near Vasna...",
-  "image_urls": ["https://storage.googleapis.com/..."],
-  "submitter_phone": "+919876543210"
-}
-```
+| Field | Type | Description |
+|---|---|---|
+| `raw_text` | string (optional) | Typed field report text |
+| `files` | file(s) (optional) | Images — jpeg/png/webp/heic, max 10 MB each |
 
-**Response:**
+At least one of `raw_text` or `files` must be provided.
+
+Files are saved to `/app/uploads/{submission_id}/{filename}` inside the container. `image_urls` stored in DB as `/uploads/{id}/{filename}`.
+
+Server sets `source='webform'` and `status='received'` — client cannot override.
+
+**Response** (immediate — before pipeline completes):
 ```json
 {
   "id": "uuid",
@@ -384,6 +392,8 @@ Server always sets `source='webform'` and `status='received'` — client cannot 
   "created_at": "2026-04-18T12:00:00Z"
 }
 ```
+
+The ingestion pipeline runs asynchronously after the response. Poll `raw_submissions.status` to check progress.
 
 ---
 
@@ -456,7 +466,62 @@ created_at: datetime
 
 ---
 
-## 8. Key Decisions & Gotchas
+## 8. Ingestion Pipeline
+
+### Overview
+
+After `POST /submissions` saves the `raw_submissions` row, a FastAPI `BackgroundTasks` task runs the full ingestion pipeline asynchronously:
+
+```
+POST /submissions
+  → save RawSubmission (status=received) → return 201 immediately
+  → [background] _run_ingestion()
+      1. status → processing
+      2. read image bytes from disk (/app/uploads/{id}/)
+      3. extract_need(text, images) → NeedExtraction
+      4. create_need_from_extraction(db, submission_id, extracted) → Need
+      5. embed_need_text(title + description + required_skills) → vector(768)
+      6. need.embedding = vector
+      7. status → extracted, extracted_need_id = need.id, processed_at = now()
+      [on any exception]
+      7. status → failed, extraction_error = str(exc)[:2000]
+```
+
+### Files
+
+| File | Responsibility |
+|---|---|
+| `app/api/v1/submissions.py` | `POST /submissions` endpoint + `_run_ingestion()` background task |
+| `app/services/extraction.py` | `extract_need(text, images) -> NeedExtraction` — Gemini call, retry, PII strip |
+| `app/services/needs_service.py` | `create_need_from_extraction(db, id, extracted) -> Need` — ORM persist + priority score |
+| `app/services/embedding.py` | `embed_need_text(text) -> list[float]` — text-embedding-004 via Vertex AI |
+| `app/services/priority.py` | `compute_stable_components/score/full_score` — deterministic priority formula |
+
+### Priority formula
+
+```
+stable_score = 40 × urgency_value           (critical=1.0, high=0.7, medium=0.4, low=0.1)
+             + 25 × severity_value           (by need_type + category)
+             + 20 × log10(1+count)/log10(1001)  (beneficiary scale, 0..1)
+             −  5 × avg_skill_rarity         (stored negative in breakdown)
+
+full_score (on-read) = stable_score + 10 × time_pressure_value
+```
+
+`stable_score` is persisted. `time_pressure` is recomputed on every read from `deadline`.
+
+### Vertex AI credentials
+
+Both `extraction.py` and `embedding.py` load credentials from `FIREBASE_SERVICE_ACCOUNT_JSON` (already in `.env`) and pass them explicitly to `vertexai.init()`. This avoids Application Default Credentials not being present inside the Docker container. The Firebase SA must have `roles/aiplatform.user` granted.
+
+### Model notes
+
+- **Extraction:** `gemini-2.5-flash` — only Gemini model available in `asia-south1`. Set `max_output_tokens=32768` to accommodate thinking tokens (the model uses internal reasoning that consumes the output budget invisibly; 8192 is not enough on complex inputs).
+- **Embedding:** `text-embedding-004` — 768-dim, `task_type=RETRIEVAL_DOCUMENT` for needs (index side). Volunteers use `RETRIEVAL_QUERY` when searching.
+
+---
+
+## 9. Key Decisions & Gotchas
 
 **Alembic uses psycopg2, app uses asyncpg — intentional.**
 Alembic's migration engine is synchronous. psycopg2 is the sync driver. The running app uses asyncpg for async performance. Both point to the same database.
@@ -484,7 +549,7 @@ On first `POST /auth/session`, if the Firebase token has no `role` claim, the us
 
 ---
 
-## 9. What's Not Built Yet
+## 10. What's Not Built Yet
 
 Endpoints still needed (in priority order):
 
@@ -514,7 +579,7 @@ Background workers not yet started:
 
 | Worker | Day | Purpose |
 |---|---|---|
-| `ingestion-worker` | Day 3 | Pub/Sub consumer: Gemini extraction + embedding |
+| ~~`ingestion-worker`~~ | ~~Day 3~~ | Replaced by `BackgroundTasks` in `core-api` — see section 8 |
 | `matching-worker` | Day 5 | Pub/Sub consumer: run matching algorithm |
 | `notification-worker` | Day 8 | Pub/Sub consumer: send SendGrid emails |
 | `reports-worker` | Day 9 | Pub/Sub consumer: generate weekly PDF |

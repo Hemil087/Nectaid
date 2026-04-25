@@ -69,46 +69,66 @@ Source: <webform|email|api>
 }
 ```
 
-### Python invocation
+### Python invocation (actual implementation — `app/services/extraction.py`)
 ```python
-from vertexai.generative_models import GenerativeModel, Part
-import vertexai, json
+import json, os, re
+import vertexai
+from vertexai.generative_models import GenerationConfig, GenerativeModel, Part
+from google.oauth2 import service_account
 
-vertexai.init(project=PROJECT_ID, location="asia-south1")
-model = GenerativeModel("gemini-2.5-flash")
-
-response = model.generate_content(
-    [
-        Part.from_text(user_text),
-        *[Part.from_data(img_bytes, mime_type="image/jpeg") for img_bytes in images],
-    ],
-    generation_config={
-        "response_mime_type": "application/json",
-        "response_schema": NEED_EXTRACTION_SCHEMA,
-        "temperature": 0.2,
-        "max_output_tokens": 1024,
-    },
-    safety_settings=SAFETY_SETTINGS,
+# Credentials from env (no ADC required in Docker)
+sa_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+credentials = service_account.Credentials.from_service_account_info(
+    json.loads(sa_json),
+    scopes=["https://www.googleapis.com/auth/cloud-platform"],
 )
-extracted = NeedExtraction.model_validate_json(response.text)
+vertexai.init(project=PROJECT_ID, location="asia-south1", credentials=credentials)
+
+model = GenerativeModel("gemini-2.5-flash", system_instruction=SYSTEM_PROMPT)
+
+response = await model.generate_content_async(
+    [Part.from_text(user_text), *[Part.from_data(img, _detect_mime(img)) for img in images]],
+    generation_config=GenerationConfig(
+        response_mime_type="application/json",
+        response_schema=_RESPONSE_SCHEMA,   # enum constraints enforced at generation time
+        temperature=0.2,
+        max_output_tokens=32768,             # must be large — thinking tokens consume budget invisibly
+    ),
+)
+extracted = NeedExtraction.model_validate(_coerce(json.loads(response.text)))
+```
+
+**Why `max_output_tokens=32768`:** Gemini 2.5 Flash is a thinking model. Internal reasoning tokens consume the `max_output_tokens` budget but do NOT appear in `usage_metadata.total_token_count`. With 8192, complex inputs use all the budget for thinking and produce no response (`finish_reason: MAX_TOKENS`). 32768 provides enough headroom for both.
+
+**Why `gemini-2.5-flash` and not `gemini-2.0-flash`:** `asia-south1` only has `gemini-2.5-flash`. Other model IDs (including versioned `-001` suffixes) return 404 in this region.
+
+### Coercion + validation
+
+Model output is normalised before Pydantic validation to catch common deviations:
+
+```python
+_NEED_TYPE_COERCE = {"healthcare": "medical", "water": "wash", "housing": "shelter", ...}
+_LANG_COERCE      = {"english": "en", "hindi": "hi", "gujarati": "gu", ...}
+_CONFIDENCE_COERCE = {"high": 0.8, "medium": 0.6, "low": 0.4, ...}
 ```
 
 ### Guardrails
-- **Strict JSON mode** via `response_schema` (Gemini feature)
-- **Pydantic validation** after response; any schema violation → retry once → dead-letter
-- **Max 5 images, max 10 MB each** enforced client-side + server-side
-- **PII stripping** enforced by prompt; additionally run a regex pass server-side to mask phone numbers and long digit sequences
+- **`response_schema`** passed to `GenerationConfig` enforces enum values at generation time
+- **`_coerce()`** normalises common model deviations before Pydantic validation
+- **Pydantic `model_validate()`** after coercion; any schema violation → retry once with stricter prompt reminder appended
+- **Max 10 MB per image** enforced at upload; images read from disk by background task
+- **PII regex** applied post-extraction on `title`, `description_en`, `description_original` — replaces phone patterns with `[PHONE]`
 
 ### Failure handling
-1. Schema mismatch → retry once with stricter reminder
-2. Safety block → mark submission `failed`, flag for manual coordinator triage
-3. Timeout > 30s → retry in worker queue up to 3x with exponential backoff (Pub/Sub native retry)
-4. Quota exhausted → fall back to rule-based minimal extraction (keyword matching for urgency and need_type); flag `confidence: 0.3` for extra coordinator scrutiny
+1. Schema mismatch → retry once with `_STRICT_REMINDER` appended to user message
+2. Second schema failure → `ExtractionError("schema_mismatch_after_retry")` → `raw_submissions.status = "failed"`
+3. Any other exception → logged, `raw_submissions.status = "failed"`, `extraction_error` column populated
+4. Embedding failure → logged, `needs.embedding` stays null, pipeline continues (need row still created)
 
 ### Cost control
 - Gemini 2.5 Flash: ~$0.075/1M input tokens (text), images priced separately
-- Typical call: ~800 input tokens + 400 output tokens + 1 image ≈ $0.001
-- 5000 extractions/month ≈ $5
+- Typical call: ~2500 prompt tokens + ~500 response tokens + thinking ≈ $0.001–0.003
+- 5000 extractions/month ≈ $5–15
 - **Budget cap** via Cloud Billing budget alert at $20/month
 
 ## 2. Skill Embeddings (Volunteer)
