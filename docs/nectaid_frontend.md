@@ -200,6 +200,7 @@ apps/web/
 ├── app/                                   # Next.js App Router
 │   ├── globals.css
 │   ├── layout.tsx                         # Root layout: fonts, providers
+│   ├── error.tsx                          # Global error boundary (wraps root layout crashes)
 │   ├── page.tsx                           # / → redirect to /dashboard or /login
 │   │
 │   ├── (auth)/                            # Auth group — no sidebar
@@ -209,6 +210,7 @@ apps/web/
 │   │
 │   └── (app)/                             # App group — has sidebar + topbar
 │       ├── layout.tsx                     # AppShell: Sidebar + TopBar + <main>
+│       ├── error.tsx                      # Error boundary for all (app) pages
 │       │
 │       ├── dashboard/
 │       │   └── page.tsx                   # Coordinator dashboard (default landing)
@@ -699,27 +701,36 @@ RootLayout (app/layout.tsx)
         └── ReadIndicator (dot)
 ```
 
-### 4.12 Admin Volunteers Page
+### 4.12 Admin Volunteers Page ✅ Complete
 
 ```
 /admin/volunteers
-├── PageHeader ("Volunteer Management")
-├── SearchInput + VerifiedFilter + SkillFilter
-└── VolunteersTable
-    └── VolunteerRow[]
-        ├── Name + email
-        ├── Skills (first 3 + "+N more")
-        ├── Location
-        ├── ReliabilityScore
-        ├── VerifiedBadge
-        └── Link to /admin/volunteers/[id]
+├── PageHeader ("Volunteer Management", subtitle = total count)
+├── VerifiedFilter pills (All / Verified / Unverified)
+├── SearchInput (name or email, client-side)
+├── Skeleton loaders (5 cards while loading)
+├── EmptyState (when no results)
+└── VolunteerCard[]
+    ├── Name + verified icon (CheckCircle2) or pending icon (Clock)
+    ├── Suspended badge (if deleted_at set)
+    ├── Email
+    ├── Skills (first 3 + "+N more")
+    ├── ReliabilityScore (star + number)
+    ├── Task count
+    └── Action buttons (per row, only when not suspended)
+        ├── Verify button → PATCH /admin/volunteers/{id}/verify
+        │   (shown only if !verified, disabled while mutating)
+        └── Suspend button → opens ConfirmDialog → POST /admin/users/{id}/suspend
+            (disabled while mutating, spinner shown)
 
-/admin/volunteers/[id]
-├── ProfileCard
-├── VerificationDocsSection
-├── AssignmentHistoryTable
-└── ActionButtons (Verify / Suspend)
+SuspendConfirmDialog
+├── "Suspend volunteer?" title
+├── Name + consequence description
+└── Cancel / Suspend (destructive) buttons
 ```
+
+API: `GET /admin/volunteers` (with `verified=true/false` filter param).
+Mutations invalidate `['admin-volunteers']` query on success.
 
 ---
 
@@ -1080,23 +1091,24 @@ For MVP use native `<input type="datetime-local">` styled with Tailwind:
 - [ ] `/reports` page + `report-card.tsx`
 - [ ] PDF download flow (open signed URL in new tab)
 
-### Day 9 (Apr 25) — Admin + Profile
-- [ ] `/admin/volunteers` + volunteers table
-- [ ] `/admin/volunteers/[id]` + verify button
-- [ ] `/volunteers/me` edit profile page
+### Day 9 (Apr 25) — Admin + Profile ✅ COMPLETE
+- [x] `/admin/volunteers` — wired to `GET /admin/volunteers`, Verify + Suspend actions with confirm dialog
+- [x] `/volunteers/me` — `full_name` edit field + skills-changed matching notice
+- [ ] `/admin/volunteers/[id]` detail page
 - [ ] `components/volunteers/availability-manager.tsx`
 - [ ] Settings page (language switcher wired to API PATCH + cookie)
 
-### Day 10 (Apr 26) — Polish
-- [ ] Skeleton loaders on every data-fetching page
-- [ ] Loading states on every mutation button
-- [ ] Error boundaries on all pages
+### Day 10 (Apr 26) — Polish ✅ LARGELY COMPLETE
+- [x] Skeleton loaders on every data-fetching page
+- [x] Loading states on every mutation button (disabled + spinner text)
+- [x] Error boundaries — `app/(app)/error.tsx` (app group) + `app/error.tsx` (root)
+- [x] Empty states on all list pages
 - [ ] Persist `NeedsFilters` to URL params (`useSearchParams`)
+- [ ] `/reports` page — week picker + stat cards + recharts bar chart
 - [ ] Hindi + Gujarati translation strings (hi.json + gu.json)
 - [ ] Desktop layout review (1280px, 1440px)
 - [ ] Tablet layout: collapsed sidebar, sheet nav
 - [ ] Accessibility: alt text, aria-labels, form labels
-- [ ] Clipboard paste for images in SubmissionForm
 
 ### Day 11 (Apr 27) — Demo Prep
 - [ ] Seed 2 test accounts (coordinator + volunteer) via Firebase console
@@ -1204,7 +1216,7 @@ export interface MatchBreakdown {
 }
 
 export interface VolunteerProfile {
-  user_id: string; skills: string[]; certifications?: string[];
+  user_id: string; full_name?: string; skills: string[]; certifications?: string[];
   home_address?: string; max_travel_km: number; verified: boolean;
   reliability_score: number; total_tasks_completed: number;
   notification_prefs: { email: boolean; in_app: boolean };

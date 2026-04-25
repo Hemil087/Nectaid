@@ -36,6 +36,7 @@ export default function MyProfilePage() {
   });
 
   // Edit state — initialised when user opens edit mode
+  const [fullName, setFullName] = useState('');
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
   const [homeAddress, setHomeAddress] = useState('');
@@ -44,8 +45,14 @@ export default function MyProfilePage() {
   const [emailNotif, setEmailNotif] = useState(true);
   const [inAppNotif, setInAppNotif] = useState(true);
 
+  const skillsChanged =
+    editing &&
+    profile != null &&
+    JSON.stringify([...(profile.skills ?? [])].sort()) !== JSON.stringify([...skills].sort());
+
   function openEdit() {
     if (!profile) return;
+    setFullName(profile.full_name ?? '');
     setSkills(profile.skills ?? []);
     setHomeAddress(profile.home_address ?? '');
     setMaxTravelKm(profile.max_travel_km);
@@ -76,6 +83,7 @@ export default function MyProfilePage() {
 
   function handleSave() {
     mutation.mutate({
+      full_name: fullName || undefined,
       skills,
       home_address: homeAddress || null,
       max_travel_km: maxTravelKm,
@@ -172,6 +180,18 @@ export default function MyProfilePage() {
         <>
           <Card>
             <CardHeader>
+              <CardTitle className="text-base">Personal details</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Full name</span>
+                <span>{profile.full_name || '—'}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="text-base">Skills</CardTitle>
             </CardHeader>
             <CardContent>
@@ -230,6 +250,22 @@ export default function MyProfilePage() {
         <>
           <Card>
             <CardHeader>
+              <CardTitle className="text-base">Personal details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Full name</Label>
+                <Input
+                  placeholder="Your full name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="text-base">Skills</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -270,6 +306,11 @@ export default function MyProfilePage() {
                     </Badge>
                   ))}
                 </div>
+              )}
+              {skillsChanged && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  Your matching profile will be updated when you save.
+                </p>
               )}
             </CardContent>
           </Card>

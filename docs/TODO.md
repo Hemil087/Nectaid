@@ -167,8 +167,12 @@
 - [ ] Photo upload in completion form — wire `POST /uploads/signed-url` + `PUT` to GCS/local
 - [ ] `/reports` page — wire to `GET /reports/weekly` + week picker + recharts bar chart (backend ready)
 - [ ] `components/dashboard/needs-heatmap.tsx` — Leaflet map (blocked until `need.location` geocoding is wired)
-- [ ] Skeleton loaders on pages that are missing them
-- [ ] Error boundaries on all pages
+- [x] Skeleton loaders on all data-fetching pages
+- [x] Loading spinners + disabled state on all mutation buttons
+- [x] Error boundaries — `app/(app)/error.tsx` + root `app/error.tsx`
+- [x] Empty states on all list pages
+- [x] `/admin/volunteers` — wired to `GET /admin/volunteers`, Verify + Suspend with confirm dialog
+- [x] `/volunteers/me` — `full_name` edit field + skills-change matching notice
 - [ ] `messages/hi.json` + `messages/gu.json` + `next-intl` provider — i18n
 - [ ] Tablet layout: collapsed sidebar → Sheet nav at <1024px
 
@@ -231,6 +235,9 @@
 | Frontend pages fully wired to API (dashboard, needs, assignments, notifications) | ✅ Done |
 | Notification bell with live unread badge | ✅ Done |
 | Demo seed script (20 volunteers, 10 needs, historical assignments) | ✅ Done |
+| Frontend polish (skeletons, mutation spinners, error boundaries, empty states) | ✅ Done |
+| /admin/volunteers wired (list, verify, suspend with dialog) | ✅ Done |
+| /volunteers/me — full_name edit + skills-change notice | ✅ Done |
 | GET /reports/weekly (JSON aggregates) | ✅ Done |
 | Audit log triggers (needs, assignments, volunteer_profiles, users) | ✅ Done |
 | Prompt injection defense in extraction pipeline | ✅ Done |

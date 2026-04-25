@@ -58,6 +58,7 @@ export interface Assignment {
 
 export interface VolunteerProfile {
   user_id: string;
+  full_name?: string;
   skills: string[];
   certifications?: string[];
   home_address?: string;
