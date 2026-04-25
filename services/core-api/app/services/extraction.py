@@ -5,10 +5,13 @@ Single public function: extract_need(text, images) -> NeedExtraction
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 import vertexai
 from vertexai.generative_models import GenerationConfig, GenerativeModel, Part
@@ -19,6 +22,18 @@ from pydantic import BaseModel, Field, ValidationError
 _PII_RE = re.compile(
     r"\b(?:\+?91[\s\-]?)?\d{5}[\s\-]?\d{5}\b"
     r"|\b\d{10,12}\b"
+)
+
+# ── Prompt injection patterns ───────────────────────────────────────────────
+_INJECTION_RE = re.compile(
+    r"ignore\s+(previous|all)\s+instructions?"
+    r"|disregard\s+(the\s+)?(above|previous|all)"
+    r"|\bsystem\s*:"
+    r"|\bprompt\s*:"
+    r"|<\s*/?\s*(?:script|iframe|object|embed|svg)"
+    r"|\[INST\]|<<SYS>>|\[\/INST\]"
+    r"|override\s+(the\s+)?(?:above|previous|all|system)",
+    re.IGNORECASE,
 )
 
 _VERTEXAI_INITIALIZED = False
@@ -220,14 +235,34 @@ def _strip_pii(result: NeedExtraction) -> NeedExtraction:
     return NeedExtraction.model_validate(data)
 
 
+def _scan_injection(text: str, submission_id: str | None) -> bool:
+    """Return True if prompt injection patterns are detected in the input."""
+    match = _INJECTION_RE.search(text)
+    if match:
+        logger.warning(
+            "prompt_injection_detected submission_id=%s pattern=%r",
+            submission_id,
+            match.group(0)[:60],
+        )
+        return True
+    return False
+
+
 # ── Public API ─────────────────────────────────────────────────────────────
-async def extract_need(text: str, images: list[bytes]) -> NeedExtraction:
+async def extract_need(
+    text: str,
+    images: list[bytes],
+    *,
+    submission_id: str | None = None,
+) -> NeedExtraction:
     """
     Extract a structured NeedExtraction from a field report.
 
     Retries once with a stricter prompt on schema mismatch.
     Raises ExtractionError on any unrecoverable failure.
     """
+    injected = _scan_injection(text, submission_id)
+
     try:
         _init_vertexai()
     except Exception as exc:
@@ -244,11 +279,15 @@ async def extract_need(text: str, images: list[bytes]) -> NeedExtraction:
             _build_parts(text, images, strict=False),
             generation_config=_GENERATION_CONFIG,
         )
-        return _strip_pii(_parse_response(response.text))
+        result = _strip_pii(_parse_response(response.text))
     except ValidationError:
-        pass  # schema mismatch → retry
+        result = None  # schema mismatch → retry
     except Exception as exc:
         raise ExtractionError(f"gemini_error: {exc}") from exc
+    else:
+        if injected:
+            result = result.model_copy(update={"confidence": 0.1})
+        return result
 
     # ── Retry with strict reminder ─────────────────────────────────────────
     try:
@@ -256,7 +295,10 @@ async def extract_need(text: str, images: list[bytes]) -> NeedExtraction:
             _build_parts(text, images, strict=True),
             generation_config=_GENERATION_CONFIG,
         )
-        return _strip_pii(_parse_response(response.text))
+        result = _strip_pii(_parse_response(response.text))
+        if injected:
+            result = result.model_copy(update={"confidence": 0.1})
+        return result
     except ValidationError as exc:
         raise ExtractionError(f"schema_mismatch_after_retry: {exc}") from exc
     except ExtractionError:

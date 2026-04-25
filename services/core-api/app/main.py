@@ -17,6 +17,7 @@ from app.api.v1.cron import router as cron_router
 from app.api.v1.needs import router as needs_router
 from app.api.v1.submissions import router as submissions_router
 from app.api.v1.uploads import router as uploads_router
+from app.api.v1.reports import router as reports_router
 from app.api.v1.volunteers import router as volunteers_router
 from app.utils.firebase import init_firebase_admin
 
@@ -67,6 +68,7 @@ app.include_router(analytics_router,   prefix="/api/v1")
 app.include_router(cron_router,           prefix="/api/v1")
 app.include_router(notifications_router,  prefix="/api/v1")
 app.include_router(admin_router,          prefix="/api/v1")
+app.include_router(reports_router,        prefix="/api/v1")
 
 
 @app.get("/health")

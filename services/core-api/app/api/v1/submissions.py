@@ -54,7 +54,7 @@ async def _run_ingestion(
                 if fp.exists():
                     images.append(fp.read_bytes())
 
-            extracted = await extract_need(raw_text or "", images)
+            extracted = await extract_need(raw_text or "", images, submission_id=str(submission_id))
             need = await create_need_from_extraction(db, submission_id, extracted)
 
             try:

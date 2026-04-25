@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import Depends, Header, HTTPException, status
 from firebase_admin import auth as firebase_auth
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -55,6 +55,10 @@ async def get_current_user(
     if user is None or user.deleted_at is not None:
         raise _unauthorized("Authenticated user was not found")
 
+    await db.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"),
+        {"uid": str(user.id)},
+    )
     return user
 
 
