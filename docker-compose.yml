@@ -39,11 +39,13 @@ services:
     volumes:
       - ./services/core-api/app:/app/app
       - ./services/core-api/alembic:/app/alembic
+      - uploads:/app/uploads
     networks:
       - nectaid-net
 
 volumes:
   pgdata:
+  uploads:
 
 networks:
   nectaid-net:
