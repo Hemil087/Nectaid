@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from geoalchemy2.shape import to_shape
@@ -235,7 +235,6 @@ async def publish_need(
 
     await sync_firestore("needs", str(need.id), db)
     if need.org_id:
-        from uuid import uuid4
         await sync_firestore(
             "coordinator_feed", str(uuid4()), db,
             org_id=str(need.org_id),
@@ -330,3 +329,31 @@ async def get_need_assignments(
             for a, full_name, email in rows
         ]
     }
+
+
+@router.post("/{need_id}/rematch", status_code=status.HTTP_202_ACCEPTED)
+async def rematch_need(
+    need_id: UUID,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_role("admin", "coordinator")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Manually re-trigger the matching algorithm for a need.
+    Useful when no candidates were found, or after expanding volunteer pool.
+    Resets need status to 'published' and runs matching in the background.
+    """
+    need = await _get_need_or_404(db, need_id)
+
+    if need.status in ("completed", "cancelled"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot rematch a {need.status} need",
+        )
+
+    need.status = "published"
+    need.updated_at = datetime.now(tz=timezone.utc)
+    await db.commit()
+
+    background_tasks.add_task(run_matching, str(need_id))
+    return {"detail": "Matching re-triggered", "need_id": str(need_id)}

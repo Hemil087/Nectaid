@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   MapPin, Users, Clock, AlertTriangle, CheckCircle2,
-  ArrowLeft, Pencil, Send, X
+  ArrowLeft, Pencil, Send, X, RefreshCw,
 } from 'lucide-react';
 import type { Need, Assignment } from '@/lib/types/api';
 import type { NeedStatus, Urgency, AssignmentStatus } from '@/lib/types/enums';
@@ -117,7 +118,9 @@ export default function NeedDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['need', id] });
       queryClient.invalidateQueries({ queryKey: ['needs'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Need published — matching started');
     },
+    onError: () => toast.error('Failed to publish. Please try again.'),
   });
 
   const cancelMutation = useMutation({
@@ -125,7 +128,19 @@ export default function NeedDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['need', id] });
       queryClient.invalidateQueries({ queryKey: ['needs'] });
+      toast.success('Need cancelled');
     },
+    onError: () => toast.error('Failed to cancel. Please try again.'),
+  });
+
+  const rematchMutation = useMutation({
+    mutationFn: () => apiFetch(`/needs/${id}/rematch`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['need', id] });
+      queryClient.invalidateQueries({ queryKey: ['need-assignments', id] });
+      toast.success('Matching re-triggered — volunteers will be notified shortly');
+    },
+    onError: () => toast.error('Failed to re-trigger matching. Please try again.'),
   });
 
   if (isLoading) {
@@ -152,9 +167,10 @@ export default function NeedDetailPage() {
     );
   }
 
-  const canPublish = liveStatus === 'pending_review';
-  const canCancel = !['completed', 'cancelled', 'expired'].includes(liveStatus);
-  const deadline = need.deadline ? new Date(need.deadline) : null;
+  const canPublish  = liveStatus === 'pending_review';
+  const canCancel   = !['completed', 'cancelled', 'expired'].includes(liveStatus);
+  const canRematch  = !['completed', 'cancelled', 'pending_review'].includes(liveStatus);
+  const deadline    = need.deadline ? new Date(need.deadline) : null;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -181,6 +197,17 @@ export default function NeedDetailPage() {
               </Link>
             </Button>
           )}
+          {canRematch && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => rematchMutation.mutate()}
+              disabled={rematchMutation.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${rematchMutation.isPending ? 'animate-spin' : ''}`} />
+              {rematchMutation.isPending ? 'Rematching…' : 'Re-run Matching'}
+            </Button>
+          )}
           {canCancel && (
             <Button
               variant="ghost"
@@ -189,7 +216,8 @@ export default function NeedDetailPage() {
               onClick={() => cancelMutation.mutate()}
               disabled={cancelMutation.isPending}
             >
-              <X className="h-4 w-4 mr-2" /> Cancel
+              <X className="h-4 w-4 mr-2" />
+              {cancelMutation.isPending ? 'Cancelling…' : 'Cancel'}
             </Button>
           )}
         </div>
@@ -211,10 +239,6 @@ export default function NeedDetailPage() {
         <span className="text-xs text-muted-foreground capitalize">{need.need_type}</span>
         {need.category && <span className="text-xs text-muted-foreground">· {need.category}</span>}
       </div>
-
-      {publishMutation.isError && (
-        <p className="text-sm text-destructive">Failed to publish. Please try again.</p>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Main detail */}

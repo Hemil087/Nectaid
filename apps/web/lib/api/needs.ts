@@ -17,6 +17,8 @@ import { QK } from '@/lib/api/query-keys';
 import { t } from '@/lib/utils/toast';
 
 // ── Types ──────────────────────────────────────────────────────────────────
+export const rematchNeed = (id: string) =>
+  apiFetch(`/needs/${id}/rematch`, { method: 'POST' });
 
 export interface NeedLocation {
   lat: number;
