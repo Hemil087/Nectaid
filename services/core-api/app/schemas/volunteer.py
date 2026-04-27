@@ -7,6 +7,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class LatLng(BaseModel):
+    lat: float
+    lng: float
+
+
 class VolunteerCreate(BaseModel):
     full_name: str
     phone: str | None = None
@@ -14,6 +19,7 @@ class VolunteerCreate(BaseModel):
     preferred_language: str = "en"
     skills: list[str] = Field(default_factory=list)
     home_address: str | None = None
+    home_location: LatLng | None = None  # { lat, lng } from map picker
     max_travel_km: int = 20
     notification_prefs: dict[str, Any] = Field(
         default_factory=lambda: {"email": True, "in_app": True}
@@ -38,6 +44,8 @@ class VolunteerResponse(BaseModel):
     skills_text: str | None = None
     certifications: list[str] | None = None
     home_address: str | None = None
+    home_location_lat: float | None = None
+    home_location_lng: float | None = None
     max_travel_km: int
     verified: bool
     verification_docs: dict[str, Any] | None = None

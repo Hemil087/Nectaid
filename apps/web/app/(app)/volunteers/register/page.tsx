@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { X } from 'lucide-react';
+import { LocationMapPicker } from '@/components/needs/location-map-picker';
 
 const SKILL_SUGGESTIONS = [
   'pediatrician', 'general-doctor', 'nurse', 'surgeon', 'physiotherapist',
@@ -34,6 +35,7 @@ export default function VolunteerRegisterPage() {
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
   const [homeAddress, setHomeAddress] = useState('');
+  const [locationPin, setLocationPin] = useState<{ lat: number; lng: number } | null>(null);
   const [maxTravelKm, setMaxTravelKm] = useState(20);
   const [emailNotif, setEmailNotif] = useState(true);
   const [inAppNotif, setInAppNotif] = useState(true);
@@ -78,6 +80,9 @@ export default function VolunteerRegisterPage() {
           preferred_language: preferredLanguage,
           skills,
           home_address: homeAddress || null,
+          home_location: locationPin
+            ? { lat: locationPin.lat, lng: locationPin.lng }
+            : null,
           max_travel_km: maxTravelKm,
           notification_prefs: { email: emailNotif, in_app: inAppNotif },
         }),
@@ -158,8 +163,6 @@ export default function VolunteerRegisterPage() {
                 onBlur={() => { if (skillInput) addSkill(skillInput); }}
               />
             </div>
-
-            {/* Suggestions */}
             <div className="flex flex-wrap gap-2">
               {SKILL_SUGGESTIONS.filter((s) => !skills.includes(s)).map((s) => (
                 <button
@@ -172,8 +175,6 @@ export default function VolunteerRegisterPage() {
                 </button>
               ))}
             </div>
-
-            {/* Selected skills */}
             {skills.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {skills.map((s) => (
@@ -197,10 +198,15 @@ export default function VolunteerRegisterPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Location & availability</CardTitle>
+            <CardDescription>
+              Set your home location so we can match you with nearby needs.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="homeAddress">Home address <span className="text-muted-foreground">(optional)</span></Label>
+              <Label htmlFor="homeAddress">
+                Home address <span className="text-muted-foreground">(optional)</span>
+              </Label>
               <Input
                 id="homeAddress"
                 placeholder="Village, District, State"
@@ -208,6 +214,22 @@ export default function VolunteerRegisterPage() {
                 onChange={(e) => setHomeAddress(e.target.value)}
               />
             </div>
+
+            {/* Map pin picker */}
+            <div className="space-y-1.5">
+              <Label>Pin your location on the map</Label>
+              <LocationMapPicker
+                value={locationPin}
+                onChange={setLocationPin}
+                className="h-64 w-full"
+              />
+              {!locationPin && (
+                <p className="text-xs text-amber-600">
+                  Click the map to set your location — improves how well we match you to nearby needs.
+                </p>
+              )}
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="maxTravel">
                 Max travel distance: <span className="font-semibold">{maxTravelKm} km</span>
