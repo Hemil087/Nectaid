@@ -1,6 +1,6 @@
 # Nectaid — Master TODO
 
-> **Current status (Apr 27, 2026):** Backend ✅ complete. Frontend ✅ complete. Deadline: Apr 28 23:59 IST.
+> **Current status (Apr 28, 2026):** Backend ✅ complete. Frontend ✅ complete. Location feature ✅ complete. Deadline: Apr 28 23:59 IST.
 > Items are ordered by dependency chain — don't skip ahead.
 
 ---
@@ -46,6 +46,18 @@
 - [x] Transition `needs.status` to `matching_complete` on success
 - [x] `sync_firestore('assignments', id)` for each assignment created
 - [x] Inline SendGrid email per assignment created
+
+### Location Feature — COMPLETE
+- [x] Geocode `location_hint` via Google Geocoding API in `needs_service.py`
+- [x] Parse WKB → `location_lat/lng` in needs API serializer
+- [x] Accept `location_lat/lng` in `PATCH /needs/{id}`
+- [x] Add `location_lat/lng` to `NeedResponse` schema
+- [x] Add `home_location` (LatLng) to `VolunteerCreate` schema
+- [x] Save `home_location` as PostGIS POINT in `create_volunteer`
+- [x] Handle `home_location` in `PATCH /volunteers/me`
+- [x] Geocode `home_address` fallback when no pin provided
+- [x] Parse WKB → `home_location_lat/lng` in `VolunteerResponse`
+- [x] Geospatial matching (`ST_DWithin`) now active — both sides have coordinates
 
 ### Volunteer Assignment Endpoints — COMPLETE
 - [x] `PATCH /volunteers/me` + re-generate embedding when skills change
@@ -104,15 +116,21 @@
 - [x] `/dashboard` — stats + Firestore live activity feed (30s poll)
 - [x] `/needs` — filters, search, skeleton loaders
 - [x] `/needs/[id]` — detail + Firestore realtime status + assignments team list + publish/cancel
-- [x] `/needs/[id]/review` — edit form + save & publish flow
+- [x] `/needs/[id]/review` — edit form + Google Maps pin picker + save & publish flow
 - [x] `/assignments` — Active/Pending/Completed tabs + pending count badge
 - [x] `/assignments/[id]` — accept/decline/start/complete flow + Firestore realtime
 - [x] `/notifications` — list + mark read
 - [x] `/submissions/new` — multipart form wired to `POST /submissions`
-- [x] `/volunteers/register` — multi-step volunteer registration
+- [x] `/volunteers/register` — multi-step volunteer registration + Google Maps location picker
 - [x] `/admin/volunteers` — list, verify, suspend with confirm dialog
-- [x] `/volunteers/me` — full_name edit + skills-change notice
+- [x] `/volunteers/me` — full_name edit + skills-change notice + Google Maps location picker
 - [x] `/reports` — week picker + KPI cards + recharts bar chart + urgency breakdown + PDF download
+
+### Location Components — COMPLETE
+- [x] `components/needs/location-map-picker.tsx` — reusable draggable Google Maps pin
+- [x] `components/needs/review-editor.tsx` — review form with map picker
+- [x] `components/dashboard/needs-heatmap.tsx` — Google Maps heatmap component (built, not yet wired into dashboard)
+- [x] `components/volunteers/registration/step-location.tsx` — volunteer location step
 
 ### API clients + hooks
 - [x] `lib/api/needs.ts` — list, get, patch, publish, cancel, explain + toast feedback
@@ -130,7 +148,8 @@
 - [x] Role-filtered sidebar nav (coordinator / volunteer / admin)
 - [x] Tablet layout: collapsed sidebar → Sheet nav at <1024px
 - [x] Hamburger trigger in TopBar on mobile/tablet
-- [x] `auth-provider.tsx` — `signOut` added to AuthCtx
+- [x] `auth-provider.tsx` — `signOut` + role-based redirect after login
+- [x] Volunteers redirect to `/assignments`, coordinators/admins to `/dashboard`
 
 ### Assignments
 - [x] `components/assignments/photo-upload-button.tsx` — signed URL → PUT to GCS → preview grid
@@ -152,7 +171,7 @@
 - [x] Error boundaries — `app/(app)/error.tsx` + root `app/error.tsx`
 - [x] Empty states on all list pages
 - [x] Notification bell with live unread badge
-- [ ] `components/dashboard/needs-heatmap.tsx` — blocked on geocoding
+- [ ] Wire `needs-heatmap.tsx` into dashboard page (component built, needs wiring)
 
 ---
 
@@ -204,15 +223,18 @@
 | Admin endpoints | ✅ Done |
 | Audit log triggers | ✅ Done |
 | Security hardening (app level) | ✅ Done |
+| **Location feature (geocoding + maps + geospatial matching)** | ✅ Done |
 | Frontend — all pages wired | ✅ Done |
 | Frontend — role-filtered sidebar + tablet layout | ✅ Done |
 | Frontend — toast notifications on all mutations | ✅ Done |
 | Frontend — photo upload in completion form | ✅ Done |
 | Frontend — /reports with week picker + recharts | ✅ Done |
 | Frontend — i18n infrastructure (en/hi/gu message files) | ✅ Done |
-| Frontend — auth signOut wired | ✅ Done |
+| Frontend — auth role-based redirect | ✅ Done |
+| Frontend — Google Maps location picker (needs + volunteers) | ✅ Done |
 | Reports PDF worker + /reports/weekly.pdf | ⏭️ Skipped (demo: show JSON report) |
 | i18n useTranslations() in components | ⏭️ Skipped (infrastructure ready, post-demo) |
+| Needs heatmap wired into dashboard | ⏳ Pending (component built) |
 | Infra security (Secret Manager, GCS, Cloud SQL) | ❌ Infra task |
-| Firebase Auth accounts wired to seed users | ❌ Manual step (backend team) |
+| Firebase Auth accounts wired to seed users | ❌ Manual step |
 | E2E demo run + recording | ❌ Pending |
