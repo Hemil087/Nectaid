@@ -24,3 +24,4 @@ sendgrid==6.11.0
 weasyprint==62.3
 python-multipart==0.0.9
 slowapi==0.1.9
+shapely==2.0.6

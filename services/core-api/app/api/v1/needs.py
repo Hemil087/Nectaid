@@ -5,6 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from geoalchemy2.shape import to_shape
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,19 @@ from app.services.priority import (
 router = APIRouter(prefix="/needs", tags=["needs"])
 
 
+# ── Location helper ────────────────────────────────────────────────────────
+
+def _parse_location(location) -> tuple[float | None, float | None]:
+    """Extract (lat, lng) from a GeoAlchemy2 WKBElement. Returns (None, None) on failure."""
+    if location is None:
+        return None, None
+    try:
+        point = to_shape(location)
+        return point.y, point.x  # lat = Y, lng = X
+    except Exception:
+        return None, None
+
+
 # ── Serialiser ─────────────────────────────────────────────────────────────
 
 def _serialize_need(need: Need) -> NeedResponse:
@@ -35,6 +49,7 @@ def _serialize_need(need: Need) -> NeedResponse:
         if need.priority_breakdown
         else need.priority_breakdown
     )
+    lat, lng = _parse_location(need.location)
     return NeedResponse(
         id=need.id,
         raw_submission_id=need.raw_submission_id,
@@ -46,6 +61,8 @@ def _serialize_need(need: Need) -> NeedResponse:
         description_original=need.description_original,
         original_language=need.original_language,
         location=str(need.location) if need.location is not None else None,
+        location_lat=lat,
+        location_lng=lng,
         location_text=need.location_text,
         urgency=need.urgency,
         beneficiary_count=need.beneficiary_count,
@@ -148,6 +165,8 @@ async def patch_need(
         "title", "need_type", "category", "description", "urgency",
         "beneficiary_count", "required_skills", "required_team_size",
         "resources_needed", "deadline", "window_start", "window_end",
+        "location_text",
+        # location coords sent separately as location_lat + location_lng
     }
     changed_scoring = False
     for key, value in body.items():
@@ -156,6 +175,21 @@ async def patch_need(
         setattr(need, key, value)
         if key in SCORING_FIELDS:
             changed_scoring = True
+
+    # Handle location coordinate update from map picker
+    # Frontend sends { location_lat: number, location_lng: number }
+    lat = body.get("location_lat")
+    lng = body.get("location_lng")
+    if lat is not None and lng is not None:
+        try:
+            lat_f = float(lat)
+            lng_f = float(lng)
+            need.location = f"SRID=4326;POINT({lng_f} {lat_f})"
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="location_lat and location_lng must be valid numbers",
+            )
 
     # Recompute priority if scoring inputs changed
     if changed_scoring:

@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ArrowLeft, X, Send } from 'lucide-react';
+import { LocationMapPicker } from '@/components/needs/location-map-picker';
 import type { Need } from '@/lib/types/api';
 import type { Urgency } from '@/lib/types/enums';
 
@@ -34,7 +35,6 @@ export default function NeedReviewPage() {
     queryFn: () => apiFetch(`/needs/${id}`),
   });
 
-  // Derive initial form values from need — no useEffect needed
   const initial = useMemo(() => ({
     title: need?.title ?? '',
     needType: need?.need_type ?? 'medical',
@@ -46,6 +46,11 @@ export default function NeedReviewPage() {
     deadline: need?.deadline ? need.deadline.slice(0, 16) : '',
     windowStart: need?.window_start ? need.window_start.slice(0, 16) : '',
     windowEnd: need?.window_end ? need.window_end.slice(0, 16) : '',
+    locationText: need?.location_text ?? '',
+    locationPin:
+      need?.location_lat != null && need?.location_lng != null
+        ? { lat: need.location_lat, lng: need.location_lng }
+        : null,
   }), [need]);
 
   const [title, setTitle] = useState('');
@@ -59,9 +64,10 @@ export default function NeedReviewPage() {
   const [deadline, setDeadline] = useState('');
   const [windowStart, setWindowStart] = useState('');
   const [windowEnd, setWindowEnd] = useState('');
+  const [locationText, setLocationText] = useState('');
+  const [locationPin, setLocationPin] = useState<{ lat: number; lng: number } | null>(null);
   const [synced, setSynced] = useState(false);
 
-  // Sync state from initial values once when need loads
   if (need && !synced) {
     setTitle(initial.title);
     setNeedType(initial.needType);
@@ -73,6 +79,8 @@ export default function NeedReviewPage() {
     setDeadline(initial.deadline);
     setWindowStart(initial.windowStart);
     setWindowEnd(initial.windowEnd);
+    setLocationText(initial.locationText);
+    setLocationPin(initial.locationPin);
     setSynced(true);
   }
 
@@ -91,6 +99,9 @@ export default function NeedReviewPage() {
       deadline: deadline ? new Date(deadline).toISOString() : null,
       window_start: windowStart ? new Date(windowStart).toISOString() : null,
       window_end: windowEnd ? new Date(windowEnd).toISOString() : null,
+      location_text: locationText,
+      location_lat: locationPin?.lat ?? null,
+      location_lng: locationPin?.lng ?? null,
     };
   }
 
@@ -256,6 +267,27 @@ export default function NeedReviewPage() {
               </div>
             </div>
           </div>
+
+          {/* ── Location ── */}
+          <div className="space-y-2">
+            <Label>Location</Label>
+            <Input
+              placeholder="e.g. Harni village, Vadodara, Gujarat"
+              value={locationText}
+              onChange={(e) => setLocationText(e.target.value)}
+            />
+            <LocationMapPicker
+              value={locationPin}
+              onChange={setLocationPin}
+              className="h-64 w-full"
+            />
+            {!locationPin && (
+              <p className="text-xs text-amber-600">
+                ⚠ No location pin — click the map to place one before publishing.
+              </p>
+            )}
+          </div>
+
         </CardContent>
       </Card>
 

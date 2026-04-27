@@ -19,7 +19,9 @@ class NeedResponse(BaseModel):
     description: str
     description_original: str | None = None
     original_language: str | None = None
-    location: str | None = None
+    location: str | None = None       # raw WKB (internal use)
+    location_lat: float | None = None  # parsed from WKB — use this in frontend
+    location_lng: float | None = None  # parsed from WKB — use this in frontend
     location_text: str | None = None
     urgency: str
     beneficiary_count: int

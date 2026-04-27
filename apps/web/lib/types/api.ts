@@ -39,6 +39,9 @@ export interface Need {
   window_end?: string;
   status: NeedStatus;
   created_at: string;
+  location_lat?: number | null
+  location_lng?: number | null
+  location_text?: string | null
 }
 
 export interface Assignment {
