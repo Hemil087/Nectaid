@@ -215,7 +215,7 @@ def seed(session: Session) -> None:
 
     # ── Volunteers (20) ───────────────────────────────────────────────────────
     vol_uids = [
-        os.getenv("DEMO_VOLUNTEER1_UID", f"demo-vol-{uuid.uuid4().hex[:8]}"),
+        os.getenv("DEMO_VOLUNTEER1_UID", "VFSp3H9EcoRFihbxpUhPmaHoc7Y2"),
         os.getenv("DEMO_VOLUNTEER2_UID", f"demo-vol-{uuid.uuid4().hex[:8]}"),
     ]
     volunteers: list[User] = []

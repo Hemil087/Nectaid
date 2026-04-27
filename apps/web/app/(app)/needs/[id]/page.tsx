@@ -303,16 +303,17 @@ export default function NeedDetailPage() {
           </CardHeader>
           <CardContent className="pt-0 divide-y divide-border">
             {assignmentsData.items.map((a) => (
-              <div key={a.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">{a.role_in_team ?? 'Volunteer'}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Match score: {(a.match_score * 100).toFixed(0)}%
+              <div key={a.id} className="py-3 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{a.volunteer_name ?? 'Unknown volunteer'}</p>
+                  <p className="text-xs text-muted-foreground">{a.volunteer_email}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {a.role_in_team} · {(a.match_score * 100).toFixed(0)}% match
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <Badge variant="secondary" className={`text-xs ${ASSIGNMENT_STATUS_STYLES[a.status]}`}>
-                    {a.status.replace('_', ' ')}
+                    {a.status.replace(/_/g, ' ')}
                   </Badge>
                   {a.status === 'completed' && (
                     <CheckCircle2 className="h-4 w-4 text-emerald-500" />

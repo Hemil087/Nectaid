@@ -46,6 +46,8 @@ export interface Assignment {
   need_id: string;
   need: Pick<Need, 'id' | 'title' | 'location' | 'urgency' | 'deadline'>;
   volunteer_id: string;
+  volunteer_name?: string;
+  volunteer_email?: string;
   role_in_team: string;
   match_score: number;
   match_breakdown: MatchBreakdown;

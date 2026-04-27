@@ -266,11 +266,12 @@ async def get_need_assignments(
     await _get_need_or_404(db, need_id)
 
     result = await db.execute(
-        select(Assignment)
+        select(Assignment, User.full_name, User.email)
+        .join(User, User.id == Assignment.volunteer_id)
         .where(Assignment.need_id == need_id)
         .order_by(Assignment.assigned_at.desc())
     )
-    assignments = list(result.scalars().all())
+    rows = result.all()
 
     return {
         "items": [
@@ -278,6 +279,8 @@ async def get_need_assignments(
                 "id": str(a.id),
                 "need_id": str(a.need_id),
                 "volunteer_id": str(a.volunteer_id),
+                "volunteer_name": full_name,
+                "volunteer_email": email,
                 "role_in_team": a.role_in_team,
                 "match_score": a.match_score,
                 "match_breakdown": a.match_breakdown,
@@ -290,6 +293,6 @@ async def get_need_assignments(
                 "completion_notes": a.completion_notes,
                 "completion_photo_urls": a.completion_photo_urls,
             }
-            for a in assignments
+            for a, full_name, email in rows
         ]
     }
