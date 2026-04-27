@@ -134,12 +134,6 @@ async def accept_assignment(
         )
 
     now = datetime.now(timezone.utc)
-    if a.accept_deadline and a.accept_deadline < now:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Accept deadline has passed",
-        )
-
     a.status = "accepted"
     a.responded_at = now
     a.updated_at = now

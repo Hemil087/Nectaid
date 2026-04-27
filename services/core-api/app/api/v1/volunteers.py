@@ -264,13 +264,14 @@ async def get_my_assignments(
     for a in assignments:
         need = needs_map.get(a.need_id)
         items.append({
-            "assignment_id": str(a.id),
+            "id": str(a.id),
             "need": {
                 "id": str(need.id) if need else str(a.need_id),
                 "title": need.title if need else None,
                 "need_type": need.need_type if need else None,
                 "urgency": need.urgency if need else None,
-                "location_text": need.location_text if need else None,
+                "location": {"text": need.location_text} if need and need.location_text else None,
+                "deadline": need.deadline.isoformat() if need and need.deadline else None,
                 "status": need.status if need else None,
             },
             "role_in_team": a.role_in_team,

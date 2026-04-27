@@ -4,24 +4,31 @@ import {
   collection, query, orderBy, limit,
   onSnapshot, doc, updateDoc,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase/firestore';
+import { db, isFirestoreRealtimeEnabled } from '@/lib/firebase/firestore';
 import type { FeedEvent } from '@/lib/types/firestore';
 
 export function useCoordinatorFeed(orgId: string | null, maxEvents = 20) {
   const [events, setEvents] = useState<FeedEvent[]>([]);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId || !db || !isFirestoreRealtimeEnabled) return;
     const feedRef = collection(db, 'coordinator_feed', orgId, 'feed');
     const q = query(feedRef, orderBy('created_at', 'desc'), limit(maxEvents));
-    const unsub = onSnapshot(q, (snap) => {
-      setEvents(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FeedEvent, 'id'>) })));
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setEvents(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FeedEvent, 'id'>) })));
+      },
+      (error) => {
+        console.warn('Firestore coordinator feed unavailable:', error.message);
+        setEvents([]);
+      },
+    );
     return () => unsub();
   }, [orgId, maxEvents]);
 
   const markRead = useCallback(async (eventId: string) => {
-    if (!orgId) return;
+    if (!orgId || !db || !isFirestoreRealtimeEnabled) return;
     await updateDoc(doc(db, 'coordinator_feed', orgId, 'feed', eventId), { read: true });
   }, [orgId]);
 

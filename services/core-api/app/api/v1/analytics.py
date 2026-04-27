@@ -25,17 +25,6 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
-def _org_filter(user: User) -> tuple[str, dict[str, Any]]:
-    """
-    Returns (SQL WHERE fragment, params dict).
-    If the coordinator belongs to an org, scope to that org.
-    Otherwise return all rows (admin / unaffiliated coordinator view).
-    """
-    if user.org_id is not None:
-        return "AND org_id = :org_id", {"org_id": str(user.org_id)}
-    return "", {}
-
-
 async def _scalar(db: AsyncSession, sql: str, params: dict) -> Any:
     result = await db.execute(text(sql), params)
     return result.scalar()
@@ -45,11 +34,11 @@ async def _scalar(db: AsyncSession, sql: str, params: dict) -> Any:
 
 @router.get("/dashboard", status_code=200)
 async def get_dashboard(
-    user: User = Depends(require_role("coordinator", "admin")),
+    _: User = Depends(require_role("coordinator", "admin")),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
 
-    org_clause, org_params = _org_filter(user)
+    org_clause, org_params = "", {}
 
     # 1 — open needs (any non-terminal status)
     open_needs_count = await _scalar(db, f"""

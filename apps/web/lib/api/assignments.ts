@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api/client';
 import { QK } from '@/lib/api/query-keys';
 import { t } from '@/lib/utils/toast';
+import { toast } from 'sonner';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -178,8 +179,6 @@ export function useRateAssignment() {
   });
 }
 
-// internal helper so the file doesn't import toast twice
 function toast_success_rating() {
-  const { toast } = require('sonner') as typeof import('sonner');
   toast.success('Rating submitted — thank you!');
 }

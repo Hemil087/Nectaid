@@ -10,8 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, MapPin, Clock, Users, CheckCircle2, XCircle, Play } from 'lucide-react';
-import type { Assignment } from '@/lib/types/api';
+import {
+  ArrowLeft, MapPin, Clock, Users, CheckCircle2, XCircle, Play,
+  AlertTriangle, BookOpen, Wrench, Package,
+} from 'lucide-react';
+import type { Assignment, Need } from '@/lib/types/api';
 import type { AssignmentStatus } from '@/lib/types/enums';
 
 const STATUS_STYLES: Record<AssignmentStatus, string> = {
@@ -51,6 +54,14 @@ export default function AssignmentDetailPage() {
         return found;
       }
     ),
+  });
+
+  // Fetch full need details once we have the need ID
+  const needId = assignment?.need?.id;
+  const { data: need } = useQuery<Need>({
+    queryKey: ['need', needId],
+    queryFn: () => apiFetch(`/needs/${needId}`),
+    enabled: !!needId,
   });
 
   const { data: taskStatus } = useTaskStatus(id ?? null);
@@ -118,7 +129,7 @@ export default function AssignmentDetailPage() {
   const isAccepted = liveStatus === 'accepted';
   const isInProgress = liveStatus === 'in_progress';
   const deadline = assignment.accept_deadline ? new Date(assignment.accept_deadline) : null;
-  const isExpired = deadline && deadline < new Date();
+  const needDeadline = need?.deadline ? new Date(need.deadline) : null;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -126,55 +137,123 @@ export default function AssignmentDetailPage() {
         <Link href="/assignments"><ArrowLeft className="h-4 w-4 mr-2" /> All assignments</Link>
       </Button>
 
-      <PageHeader title={assignment.need?.title ?? 'Assignment'} />
+      <PageHeader title={need?.title ?? assignment.need?.title ?? 'Assignment'} />
 
       <div className="flex items-center gap-2 flex-wrap">
         <Badge variant="outline" className={STATUS_STYLES[liveStatus]}>
-          {liveStatus.replace('_', ' ')}
+          {liveStatus.replace(/_/g, ' ')}
         </Badge>
-        {assignment.need?.urgency && (
-          <Badge variant="outline" className={URGENCY_STYLES[assignment.need.urgency]}>
-            {assignment.need.urgency}
+        {(need?.urgency ?? assignment.need?.urgency) && (
+          <Badge variant="outline" className={URGENCY_STYLES[need?.urgency ?? assignment.need?.urgency ?? '']}>
+            {need?.urgency ?? assignment.need?.urgency}
           </Badge>
         )}
         {assignment.role_in_team && (
-          <span className="text-xs text-muted-foreground">Role: {assignment.role_in_team}</span>
+          <span className="text-xs text-muted-foreground capitalize">Role: {assignment.role_in_team}</span>
         )}
+        <span className="text-xs text-muted-foreground">
+          {(assignment.match_score * 100).toFixed(0)}% match
+        </span>
       </div>
 
+      {/* What the volunteer needs to know */}
+      {need?.description && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-muted-foreground" /> Situation
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-relaxed">{need.description}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Logistics */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Task details</CardTitle></CardHeader>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Task details</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-3">
-          {assignment.need?.location?.text && (
-            <div className="flex items-center gap-2 text-sm">
-              <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
-              <span>{assignment.need.location.text}</span>
+          {(need?.location?.text ?? assignment.need?.location?.text) && (
+            <div className="flex items-start gap-2 text-sm">
+              <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+              <span>{need?.location?.text ?? assignment.need?.location?.text}</span>
             </div>
           )}
-          {assignment.need?.deadline && (
+          {need?.beneficiary_count && (
             <div className="flex items-center gap-2 text-sm">
-              <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-              <span>Due {new Date(assignment.need.deadline).toLocaleDateString('en-IN', {
-                day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-              })}</span>
+              <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span>
+                {need.beneficiary_count} beneficiar{need.beneficiary_count !== 1 ? 'ies' : 'y'} affected
+              </span>
             </div>
           )}
-          <div className="flex items-center gap-2 text-sm">
-            <Users className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span>Match score: {(assignment.match_score * 100).toFixed(0)}%</span>
-          </div>
-          {isPending && deadline && (
-            <div className={`flex items-center gap-2 text-sm ${isExpired ? 'text-red-500' : 'text-yellow-600'}`}>
+          {need?.required_team_size && (
+            <div className="flex items-center gap-2 text-sm">
+              <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span>{need.required_team_size} volunteer{need.required_team_size !== 1 ? 's' : ''} needed total</span>
+            </div>
+          )}
+          {needDeadline && (
+            <div className={`flex items-center gap-2 text-sm ${needDeadline < new Date() ? 'text-red-500' : ''}`}>
               <Clock className="h-4 w-4 shrink-0" />
               <span>
-                {isExpired ? 'Acceptance deadline passed' : `Accept by ${deadline.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
+                {needDeadline < new Date() ? 'Overdue · ' : 'Due '}
+                {needDeadline.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
               </span>
+            </div>
+          )}
+          {isPending && deadline && (
+            <div className="flex items-center gap-2 text-sm text-yellow-600">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Accept by {deadline.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {isPending && !isExpired && (
+      {/* Required skills */}
+      {need?.required_skills?.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <Wrench className="h-3.5 w-3.5" /> Required skills
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 flex flex-wrap gap-1.5">
+            {need.required_skills.map((s) => (
+              <Badge
+                key={s}
+                variant="secondary"
+                className={`text-xs ${s === assignment.role_in_team ? 'bg-primary/10 text-primary border border-primary/20' : ''}`}
+              >
+                {s}
+                {s === assignment.role_in_team && ' ← your role'}
+              </Badge>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Resources needed */}
+      {need?.resources_needed?.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <Package className="h-3.5 w-3.5" /> What to bring
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 flex flex-wrap gap-1.5">
+            {need.resources_needed.map((r) => (
+              <Badge key={r} variant="outline" className="text-xs">{r}</Badge>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {isPending && (
         <div className="space-y-3">
           <Button className="w-full" onClick={() => acceptMutation.mutate()} disabled={acceptMutation.isPending}>
             <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -264,4 +343,4 @@ export default function AssignmentDetailPage() {
       )}
     </div>
   );
-} 
+}
