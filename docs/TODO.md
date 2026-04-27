@@ -32,6 +32,7 @@
 - [x] `POST /needs/{id}/cancel`
 - [x] `GET /needs/{id}/explain` — priority breakdown JSON
 - [x] `GET /needs/{id}/assignments`
+- [x] `POST /needs/{id}/rematch` — manual re-trigger by coordinator/admin
 - [x] Audit log trigger on `needs` table
 
 ### Priority Scoring — COMPLETE
@@ -48,7 +49,7 @@
 - [x] Inline SendGrid email per assignment created
 
 ### Location Feature — COMPLETE
-- [x] Geocode `location_hint` via Google Geocoding API in `needs_service.py`
+- [x] Geocode `location_hint` via Nominatim (OpenStreetMap, no API key required)
 - [x] Parse WKB → `location_lat/lng` in needs API serializer
 - [x] Accept `location_lat/lng` in `PATCH /needs/{id}`
 - [x] Add `location_lat/lng` to `NeedResponse` schema
@@ -115,25 +116,25 @@
 ### Pages
 - [x] `/dashboard` — stats + Firestore live activity feed (30s poll)
 - [x] `/needs` — filters, search, skeleton loaders
-- [x] `/needs/[id]` — detail + Firestore realtime status + assignments team list + publish/cancel
-- [x] `/needs/[id]/review` — edit form + Google Maps pin picker + save & publish flow
+- [x] `/needs/[id]` — detail + Firestore realtime status + assignments team list + publish/cancel/rematch
+- [x] `/needs/[id]/review` — edit form + map pin picker + save & publish flow
 - [x] `/assignments` — Active/Pending/Completed tabs + pending count badge
 - [x] `/assignments/[id]` — accept/decline/start/complete flow + Firestore realtime
 - [x] `/notifications` — list + mark read
 - [x] `/submissions/new` — multipart form wired to `POST /submissions`
-- [x] `/volunteers/register` — multi-step volunteer registration + Google Maps location picker
+- [x] `/volunteers/register` — multi-step volunteer registration + location picker
 - [x] `/admin/volunteers` — list, verify, suspend with confirm dialog
-- [x] `/volunteers/me` — full_name edit + skills-change notice + Google Maps location picker
+- [x] `/volunteers/me` — full_name edit + skills-change notice + location picker
 - [x] `/reports` — week picker + KPI cards + recharts bar chart + urgency breakdown + PDF download
 
 ### Location Components — COMPLETE
-- [x] `components/needs/location-map-picker.tsx` — reusable draggable Google Maps pin
+- [x] `components/needs/location-map-picker.tsx` — reusable draggable pin
 - [x] `components/needs/review-editor.tsx` — review form with map picker
-- [x] `components/dashboard/needs-heatmap.tsx` — Google Maps heatmap component (built, not yet wired into dashboard)
+- [x] `components/dashboard/needs-heatmap.tsx` — heatmap component (built, not yet wired into dashboard)
 - [x] `components/volunteers/registration/step-location.tsx` — volunteer location step
 
 ### API clients + hooks
-- [x] `lib/api/needs.ts` — list, get, patch, publish, cancel, explain + toast feedback
+- [x] `lib/api/needs.ts` — list, get, patch, publish, cancel, explain, rematch + toast feedback
 - [x] `lib/api/assignments.ts` — accept, decline, status, rate + toast feedback
 - [x] `lib/api/analytics.ts` — dashboard
 - [x] `lib/api/notifications.ts` — list, read, readAll
@@ -165,7 +166,7 @@
 - [ ] Wire `useTranslations()` into individual components (post-demo)
 
 ### Polish
-- [x] Toast notifications on all mutations (accept/decline/status/publish/cancel)
+- [x] Toast notifications on all mutations (accept/decline/status/publish/cancel/rematch)
 - [x] Skeleton loaders on all data-fetching pages
 - [x] Loading spinners + disabled state on all mutation buttons
 - [x] Error boundaries — `app/(app)/error.tsx` + root `app/error.tsx`
@@ -196,7 +197,8 @@
       `DEMO_COORDINATOR_UID=xxx DEMO_ADMIN_UID=xxx docker compose exec api python scripts/seed_demo.py`
 - [ ] Verify SendGrid sender identity; test assignment email end-to-end
 - [ ] Run full E2E: submission → AI extraction → review → publish → matching → accept → complete → rate
-- [ ] Record demo video: priority breakdown tooltip, team assignment, accept via email
+- [ ] Test rematch button: decline a volunteer → hit Re-run Matching → new volunteer notified
+- [ ] Record demo video: priority breakdown tooltip, team assignment, accept via email, rematch flow
 - [ ] Architecture diagram in slide deck
 - [ ] Tag release: `git tag v0.1.0-demo`
 
@@ -209,6 +211,7 @@
 | Docker / DB / Alembic / models | ✅ Done |
 | Firebase auth (frontend + backend) | ✅ Done |
 | Core API — all endpoints | ✅ Done |
+| POST /needs/{id}/rematch | ✅ Done |
 | AI ingestion pipeline | ✅ Done |
 | Priority scoring | ✅ Done |
 | Matching algorithm (greedy + Hungarian) | ✅ Done |
@@ -223,7 +226,7 @@
 | Admin endpoints | ✅ Done |
 | Audit log triggers | ✅ Done |
 | Security hardening (app level) | ✅ Done |
-| **Location feature (geocoding + maps + geospatial matching)** | ✅ Done |
+| Location feature (Nominatim geocoding + maps + geospatial matching) | ✅ Done |
 | Frontend — all pages wired | ✅ Done |
 | Frontend — role-filtered sidebar + tablet layout | ✅ Done |
 | Frontend — toast notifications on all mutations | ✅ Done |
@@ -231,7 +234,7 @@
 | Frontend — /reports with week picker + recharts | ✅ Done |
 | Frontend — i18n infrastructure (en/hi/gu message files) | ✅ Done |
 | Frontend — auth role-based redirect | ✅ Done |
-| Frontend — Google Maps location picker (needs + volunteers) | ✅ Done |
+| Frontend — rematch button on need detail page | ✅ Done |
 | Reports PDF worker + /reports/weekly.pdf | ⏭️ Skipped (demo: show JSON report) |
 | i18n useTranslations() in components | ⏭️ Skipped (infrastructure ready, post-demo) |
 | Needs heatmap wired into dashboard | ⏳ Pending (component built) |
