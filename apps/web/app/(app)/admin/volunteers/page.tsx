@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Search, CheckCircle2, Clock, Star, ShieldOff } from 'lucide-react';
+import { Search, CheckCircle2, Clock, Star, ShieldOff, AlertTriangle } from 'lucide-react';
 
 type Filter = 'all' | 'verified' | 'unverified';
 
@@ -176,24 +176,28 @@ export default function AdminVolunteersPage() {
       )}
 
       <Dialog open={!!confirmSuspend} onOpenChange={(open) => !open && setConfirmSuspend(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Suspend volunteer?</DialogTitle>
-            <DialogDescription>
-              <strong>{confirmSuspend?.full_name}</strong> will be soft-deleted and immediately
-              logged out. This action can be reversed from the database but not from this UI.
+        <DialogContent className="sm:max-w-md border-destructive/20">
+          <DialogHeader className="flex flex-col items-center sm:items-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 mb-4">
+              <AlertTriangle className="h-6 w-6 text-destructive" />
+            </div>
+            <DialogTitle className="text-xl text-red-600">Suspend Volunteer?</DialogTitle>
+            <DialogDescription className="text-center pt-2 text-muted-foreground text-base">
+              Are you sure you want to suspend <strong className="text-foreground font-bold">{confirmSuspend?.full_name}</strong>?
+              <br /><br />
+              They will be soft-deleted and immediately logged out. This action can be reversed from the database but <span className="font-bold text-red-600">not from this UI</span>.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmSuspend(null)}>
+          <DialogFooter className="gap-2 sm:space-x-0 w-full flex-col sm:flex-row mt-4">
+            <Button variant="outline" onClick={() => setConfirmSuspend(null)} className="w-full">
               Cancel
             </Button>
             <Button
-              variant="destructive"
               disabled={suspendMutation.isPending}
               onClick={() => confirmSuspend && suspendMutation.mutate(confirmSuspend.user_id)}
+              className="w-full bg-red-600 hover:bg-red-700 text-white shadow-sm"
             >
-              {suspendMutation.isPending ? 'Suspending…' : 'Suspend'}
+              {suspendMutation.isPending ? 'Suspending…' : 'Yes, Suspend'}
             </Button>
           </DialogFooter>
         </DialogContent>
