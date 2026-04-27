@@ -7,9 +7,14 @@ import type { AppUser } from '@/lib/types/api';
 interface AuthCtx {
   user: AppUser | null;
   loading: boolean;
+  signOut: () => Promise<void>;
 }
 
-const Ctx = createContext<AuthCtx>({ user: null, loading: true });
+const Ctx = createContext<AuthCtx>({
+  user: null,
+  loading: true,
+  signOut: async () => {},
+});
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
@@ -33,7 +38,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  return <Ctx.Provider value={{ user, loading }}>{children}</Ctx.Provider>;
+  async function signOut() {
+    const { getAuth, signOut: firebaseSignOut } = await import('firebase/auth');
+    await firebaseSignOut(getAuth());
+    // Clear session cookie
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    setUser(null);
+    window.location.href = '/login';
+  }
+
+  return (
+    <Ctx.Provider value={{ user, loading, signOut }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useAuth() {

@@ -1,86 +1,218 @@
+/**
+ * components/layout/sidebar.tsx
+ *
+ * Desktop sidebar (fixed, 240 px) + Sheet nav for tablet/mobile (<1024 px).
+ * Nav items are role-filtered — volunteers never see coordinator routes
+ * and vice versa.
+ */
 'use client';
+
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { useState } from 'react';
+
 import {
-  LayoutDashboard, ClipboardList, Plus, Users, FileText,
-  Bell, Settings, LogOut, ShieldCheck,
+  AlertCircle,
+  BarChart3,
+  Bell,
+  ChevronRight,
+  ClipboardList,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Settings,
+  Shield,
+  User,
+  Users,
 } from 'lucide-react';
-import { cn } from '@/lib/utils/cn';
+
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useAuth } from '@/lib/providers/auth-provider';
-import { signOut } from '@/lib/firebase/auth';
-import type { Role } from '@/lib/types/enums';
+import { cn } from '@/lib/utils/cn';
+
+// ── Nav items per role ─────────────────────────────────────────────────────
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  roles: Role[];
 }
 
-const NAV: NavItem[] = [
-  { label: 'Dashboard',      href: '/dashboard',         icon: LayoutDashboard, roles: ['coordinator', 'admin'] },
-  { label: 'New Submission', href: '/submissions/new',   icon: Plus,            roles: ['coordinator', 'admin'] },
-  { label: 'Needs',          href: '/needs',             icon: ClipboardList,   roles: ['coordinator', 'admin'] },
-  { label: 'My Assignments', href: '/assignments',       icon: ClipboardList,   roles: ['volunteer'] },
-  { label: 'My Profile',     href: '/volunteers/me',     icon: Users,           roles: ['volunteer'] },
-  { label: 'Reports',        href: '/reports',           icon: FileText,        roles: ['coordinator', 'admin'] },
-  { label: 'Notifications',  href: '/notifications',     icon: Bell,            roles: ['coordinator', 'admin', 'volunteer'] },
-  { label: 'Settings',       href: '/settings',          icon: Settings,        roles: ['coordinator', 'admin', 'volunteer'] },
-  { label: 'Volunteers',     href: '/admin/volunteers',  icon: ShieldCheck,     roles: ['admin'] },
+const COORDINATOR_NAV: NavItem[] = [
+  { label: 'Dashboard',       href: '/dashboard',        icon: LayoutDashboard },
+  { label: 'New Submission',  href: '/submissions/new',  icon: ClipboardList },
+  { label: 'Needs',           href: '/needs',            icon: AlertCircle },
+  { label: 'Reports',         href: '/reports',          icon: BarChart3 },
+  { label: 'Notifications',   href: '/notifications',    icon: Bell },
+  { label: 'Settings',        href: '/settings',         icon: Settings },
 ];
 
-export function Sidebar() {
+const VOLUNTEER_NAV: NavItem[] = [
+  { label: 'My Assignments',  href: '/assignments',      icon: ClipboardList },
+  { label: 'My Profile',      href: '/volunteers/me',    icon: User },
+  { label: 'Notifications',   href: '/notifications',    icon: Bell },
+  { label: 'Settings',        href: '/settings',         icon: Settings },
+];
+
+const ADMIN_EXTRA: NavItem[] = [
+  { label: 'Manage Volunteers', href: '/admin/volunteers', icon: Users },
+];
+
+function getNavItems(role: string | undefined): NavItem[] {
+  if (role === 'volunteer') return VOLUNTEER_NAV;
+  if (role === 'admin') return [...COORDINATOR_NAV, ...ADMIN_EXTRA];
+  return COORDINATOR_NAV; // coordinator + default
+}
+
+// ── Single nav link ────────────────────────────────────────────────────────
+
+function NavLink({ item, onClick }: { item: NavItem; onClick?: () => void }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user } = useAuth();
-
-  const visible = NAV.filter((n) => user && n.roles.includes(user.role));
-
-  async function handleLogout() {
-    await signOut();
-    router.replace('/login');
-  }
+  const active =
+    item.href === '/dashboard'
+      ? pathname === '/dashboard'
+      : pathname.startsWith(item.href);
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r bg-card">
-      <div className="px-6 py-5 border-b">
-        <span className="text-lg font-semibold text-primary">Nectaid</span>
-        {user?.org_id && (
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">{user.org_id}</p>
-        )}
-      </div>
+    <Link
+      href={item.href}
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+        active
+          ? 'bg-primary/10 text-primary'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+      )}
+    >
+      <item.icon className="h-4 w-4 shrink-0" />
+      {item.label}
+    </Link>
+  );
+}
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        {visible.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + '/');
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                active
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+// ── Shared nav body ────────────────────────────────────────────────────────
 
-      <div className="border-t px-3 py-4">
-        <div className="px-3 py-2 text-xs text-muted-foreground truncate">{user?.full_name}</div>
-        <button
-          onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+function NavBody({
+  onLinkClick,
+}: {
+  onLinkClick?: () => void;
+}) {
+  const { user, signOut } = useAuth();
+  const items = getNavItems(user?.role);
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Logo */}
+      <div className="flex h-14 items-center border-b px-4">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-2 font-semibold text-foreground"
+          onClick={onLinkClick}
         >
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </button>
+          <Shield className="h-5 w-5 text-primary" />
+          <span>Nectaid</span>
+        </Link>
       </div>
+
+      {/* Nav links */}
+      <ScrollArea className="flex-1 px-3 py-4">
+        <nav className="flex flex-col gap-1">
+          {items.map((item) => (
+            <NavLink key={item.href} item={item} onClick={onLinkClick} />
+          ))}
+
+          {/* Admin section label */}
+          {user?.role === 'admin' && (
+            <>
+              <Separator className="my-2" />
+              <p className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Admin
+              </p>
+              {ADMIN_EXTRA.map((item) => (
+                <NavLink key={item.href} item={item} onClick={onLinkClick} />
+              ))}
+            </>
+          )}
+        </nav>
+      </ScrollArea>
+
+      {/* User footer */}
+      <div className="border-t p-3">
+        <div className="flex items-center gap-3 rounded-md px-2 py-2">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            {user?.full_name?.[0]?.toUpperCase() ?? '?'}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{user?.full_name}</p>
+            <p className="truncate text-xs capitalize text-muted-foreground">
+              {user?.role}
+            </p>
+          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={signOut}
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="sr-only">Sign out</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Sign out</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Desktop sidebar ────────────────────────────────────────────────────────
+
+export function Sidebar() {
+  return (
+    <aside className="hidden w-60 shrink-0 border-r bg-background lg:flex lg:flex-col">
+      <NavBody />
     </aside>
+  );
+}
+
+// ── Mobile / tablet hamburger trigger ─────────────────────────────────────
+
+export function MobileSidebarTrigger() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden"
+          aria-label="Open navigation"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="w-60 p-0">
+        <NavBody onLinkClick={() => setOpen(false)} />
+      </SheetContent>
+    </Sheet>
   );
 }

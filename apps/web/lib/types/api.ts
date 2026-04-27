@@ -104,6 +104,10 @@ export interface WeeklyReport {
   headline: string;
   metrics: Record<string, number>;
   pdf_url?: string;
+  needs_by_type?: Record<string, number>;
+  needs_by_urgency?: Record<string, number>;
+  top_locations?: { location_text: string; count: number }[];
+  narrative_paragraphs?: string[] | null;
 }
 
 export interface NeedsPage {
