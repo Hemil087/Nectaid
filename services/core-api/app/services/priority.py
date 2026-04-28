@@ -66,6 +66,13 @@ SKILL_RARITY: dict[str, float] = {
 }
 DEFAULT_SKILL_RARITY = 0.3
 
+STABLE_COMPONENT_KEYS = (
+    "urgency_component",
+    "severity_component",
+    "beneficiary_component",
+    "resource_difficulty_component",
+)
+
 
 # ── Component functions ────────────────────────────────────────────────────
 
@@ -136,7 +143,29 @@ def compute_stable_components(need: Need) -> dict[str, float]:
 
 def compute_stable_score(components: dict[str, float]) -> float:
     """Sum of stable components — stored in needs.priority_score."""
-    return round(sum(components.values()), 2)
+    return round(_sum_stable_components(components), 2)
+
+
+def _stable_breakdown(stored_breakdown: dict[str, Any]) -> dict[str, float]:
+    """
+    Return only persisted scoring components.
+
+    Older demo rows included derived fields like time_pressure_component and
+    total in priority_breakdown. Those must not be included in stable sums,
+    otherwise full priority is inflated when fresh time pressure is added.
+    """
+    stable: dict[str, float] = {}
+    for key in STABLE_COMPONENT_KEYS:
+        value = stored_breakdown.get(key, 0.0)
+        try:
+            stable[key] = float(value)
+        except (TypeError, ValueError):
+            stable[key] = 0.0
+    return stable
+
+
+def _sum_stable_components(stored_breakdown: dict[str, Any]) -> float:
+    return sum(_stable_breakdown(stored_breakdown).values())
 
 
 def compute_full_breakdown(
@@ -147,10 +176,11 @@ def compute_full_breakdown(
     Returns the full breakdown including fresh time_pressure.
     Used in GET /needs and GET /needs/{id}/explain responses.
     """
+    stable = _stable_breakdown(stored_breakdown)
     t = round(W_T * _time_pressure_value(deadline), 2)
-    total = round(sum(stored_breakdown.values()) + t, 2)
+    total = round(sum(stable.values()) + t, 2)
     return {
-        **stored_breakdown,
+        **stable,
         "time_pressure_component": t,
         "total": total,
     }
@@ -162,7 +192,7 @@ def compute_full_score(need: Need) -> float:
     Used when returning need data to the frontend.
     """
     if need.priority_breakdown:
-        stable_sum = sum(need.priority_breakdown.values())
+        stable_sum = _sum_stable_components(need.priority_breakdown)
     elif need.priority_score is not None:
         stable_sum = need.priority_score
     else:

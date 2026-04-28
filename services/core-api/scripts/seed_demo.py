@@ -54,18 +54,6 @@ def _ago(**kwargs) -> datetime:
     return NOW - timedelta(**kwargs)
 
 
-def _priority(urgency: str, need_type: str, beneficiary_count: int) -> float:
-    urgency_map = {"critical": 1.0, "high": 0.7, "medium": 0.4, "low": 0.1}
-    severity_map = {
-        "medical": 1.0, "shelter": 0.8, "wash": 0.7, "food": 0.7,
-        "education": 0.4, "livelihood": 0.4, "other": 0.3,
-    }
-    u = urgency_map.get(urgency, 0.4)
-    s = severity_map.get(need_type, 0.3)
-    b = math.log10(1 + beneficiary_count) / math.log10(1001)
-    return round(40 * u + 25 * s + 20 * b, 2)
-
-
 # ── Seed data ─────────────────────────────────────────────────────────────────
 
 VOLUNTEER_DATA = [
@@ -258,7 +246,13 @@ def seed(session: Session) -> None:
     # ── Needs (10) ────────────────────────────────────────────────────────────
     needs: list[Need] = []
     for (title, need_type, urgency, description, bcount, skills, team_size, status, days_ago) in NEEDS_DATA:
-        p = _priority(urgency, need_type, bcount)
+        priority_breakdown = {
+            "urgency_component": round(40 * {"critical":1.0,"high":0.7,"medium":0.4,"low":0.1}[urgency], 2),
+            "severity_component": round(25 * {"medical":1.0,"shelter":0.8,"wash":0.7,"food":0.7,"education":0.4,"livelihood":0.4,"other":0.3}.get(need_type, 0.3), 2),
+            "beneficiary_component": round(20 * math.log10(1 + bcount) / math.log10(1001), 2),
+            "resource_difficulty_component": -1.5,
+        }
+        p = round(sum(priority_breakdown.values()), 2)
         deadline = NOW + timedelta(days=random.randint(2, 14)) if status not in ("cancelled", "completed") else None
         published_at = _ago(days=days_ago) if status not in ("pending_review",) else None
 
@@ -273,14 +267,7 @@ def seed(session: Session) -> None:
             required_team_size=team_size,
             status=status,
             priority_score=p,
-            priority_breakdown={
-                "urgency_component": round(40 * {"critical":1.0,"high":0.7,"medium":0.4,"low":0.1}[urgency], 2),
-                "severity_component": round(25 * {"medical":1.0,"shelter":0.8,"wash":0.7,"food":0.7,"education":0.4,"livelihood":0.4,"other":0.3}.get(need_type, 0.3), 2),
-                "beneficiary_component": round(20 * math.log10(1 + bcount) / math.log10(1001), 2),
-                "time_pressure_component": 5.0,
-                "resource_difficulty_component": -1.5,
-                "total": p,
-            },
+            priority_breakdown=priority_breakdown,
             location_text=f"{random.choice(['Ahmedabad','Surat','Vadodara','Rajkot','Anand','Kheda','Bhavnagar','Junagadh'])}, Gujarat",
             deadline=deadline,
             created_by=coordinator.id,
