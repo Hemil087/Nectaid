@@ -36,8 +36,8 @@ export function ImageUploadGrid({ files, isUploading, onChange }: Props) {
     <div className="space-y-3">
       <div
         className={cn(
-          'flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors',
-          dragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50',
+          'flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+          dragging ? 'border-teal-400 bg-teal-50' : 'border-border hover:border-teal-300 hover:bg-teal-50/40 hover:shadow-sm',
           (files.length >= MAX_IMAGES || isUploading) && 'pointer-events-none opacity-50',
         )}
         onClick={() => inputRef.current?.click()}

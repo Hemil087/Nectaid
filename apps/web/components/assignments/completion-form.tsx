@@ -75,7 +75,11 @@ export function CompletionForm({ assignmentId }: CompletionFormProps) {
       </div>
 
       {/* Submit */}
-      <Button type="submit" disabled={isPending} className="gap-2 w-full">
+      <Button
+        type="submit"
+        disabled={isPending}
+        className="w-full gap-2 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 hover:shadow-md"
+      >
         {isPending ? (
           <>Submitting…</>
         ) : (

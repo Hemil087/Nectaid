@@ -154,11 +154,11 @@ export default function NeedReviewPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Button variant="ghost" size="sm" asChild>
           <Link href={`/needs/${id}`}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Link>
         </Button>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => saveMutation.mutate(buildBody())} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? 'Saving…' : 'Save draft'}
           </Button>
@@ -194,7 +194,7 @@ export default function NeedReviewPage() {
             <Label htmlFor="title">Title</Label>
             <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Need type</Label>
               <select value={needType} onChange={(e) => setNeedType(e.target.value)}
@@ -215,7 +215,7 @@ export default function NeedReviewPage() {
             <textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} rows={4}
               className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="beneficiaryCount">Beneficiary count</Label>
               <Input id="beneficiaryCount" type="number" min={0} value={beneficiaryCount} onChange={(e) => setBeneficiaryCount(Number(e.target.value))} />

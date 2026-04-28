@@ -138,12 +138,12 @@ export default function ReportsPage() {
   });
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 w-full max-w-3xl">
       <PageHeader
         title="Weekly Reports"
         subtitle="AI-generated impact summaries for your organisation"
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {/* Week picker */}
             <Select value={selectedWeek} onValueChange={setSelectedWeek}>
               <SelectTrigger className="w-56">

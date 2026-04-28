@@ -175,11 +175,11 @@ export default function NeedDetailPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Back + actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/needs"><ArrowLeft className="h-4 w-4 mr-2" /> All needs</Link>
         </Button>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           {canPublish && (
             <Button
               size="sm"
@@ -258,7 +258,7 @@ export default function NeedDetailPage() {
         {/* Side info */}
         <div className="space-y-4">
           {/* Priority score */}
-          <Card className="cursor-pointer" onClick={() => setShowPriority(!showPriority)}>
+          <Card className="cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all" onClick={() => setShowPriority(!showPriority)}>
             <CardContent className="py-4">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-xs text-muted-foreground">Priority score</p>
@@ -327,7 +327,7 @@ export default function NeedDetailPage() {
           </CardHeader>
           <CardContent className="pt-0 divide-y divide-border">
             {assignmentsData.items.map((a) => (
-              <div key={a.id} className="py-3 flex items-center justify-between gap-4">
+              <div key={a.id} className="py-3 flex flex-wrap items-center justify-between gap-4 hover:bg-muted/40 transition-colors rounded px-1 -mx-1">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">{a.volunteer_name ?? 'Unknown volunteer'}</p>
                   <p className="text-xs text-muted-foreground">{a.volunteer_email}</p>

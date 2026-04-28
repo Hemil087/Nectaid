@@ -42,7 +42,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 w-full max-w-2xl">
       <PageHeader title="Settings" subtitle="Language, profile, and account preferences" />
 
       {/* Language */}

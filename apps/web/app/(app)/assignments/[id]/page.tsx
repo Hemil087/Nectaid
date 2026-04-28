@@ -35,6 +35,9 @@ const URGENCY_STYLES: Record<string, string> = {
   low:      'bg-green-100 text-green-700 border-green-200',
 };
 
+const INFO_CARD_HOVER =
+  'transition-[border-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md';
+
 export default function AssignmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -130,6 +133,8 @@ export default function AssignmentDetailPage() {
   const isInProgress = liveStatus === 'in_progress';
   const deadline = assignment.accept_deadline ? new Date(assignment.accept_deadline) : null;
   const needDeadline = need?.deadline ? new Date(need.deadline) : null;
+  const requiredSkills = need?.required_skills ?? [];
+  const resourcesNeeded = need?.resources_needed ?? [];
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -158,7 +163,7 @@ export default function AssignmentDetailPage() {
 
       {/* What the volunteer needs to know */}
       {need?.description && (
-        <Card>
+        <Card className={INFO_CARD_HOVER}>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-muted-foreground" /> Situation
@@ -171,7 +176,7 @@ export default function AssignmentDetailPage() {
       )}
 
       {/* Logistics */}
-      <Card>
+      <Card className={INFO_CARD_HOVER}>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Task details</CardTitle>
         </CardHeader>
@@ -215,15 +220,15 @@ export default function AssignmentDetailPage() {
       </Card>
 
       {/* Required skills */}
-      {need?.required_skills?.length > 0 && (
-        <Card>
+      {requiredSkills.length > 0 && (
+        <Card className={INFO_CARD_HOVER}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
               <Wrench className="h-3.5 w-3.5" /> Required skills
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 flex flex-wrap gap-1.5">
-            {need.required_skills.map((s) => (
+            {requiredSkills.map((s) => (
               <Badge
                 key={s}
                 variant="secondary"
@@ -238,15 +243,15 @@ export default function AssignmentDetailPage() {
       )}
 
       {/* Resources needed */}
-      {need?.resources_needed?.length > 0 && (
-        <Card>
+      {resourcesNeeded.length > 0 && (
+        <Card className={INFO_CARD_HOVER}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
               <Package className="h-3.5 w-3.5" /> What to bring
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 flex flex-wrap gap-1.5">
-            {need.resources_needed.map((r) => (
+            {resourcesNeeded.map((r) => (
               <Badge key={r} variant="outline" className="text-xs">{r}</Badge>
             ))}
           </CardContent>
@@ -255,16 +260,24 @@ export default function AssignmentDetailPage() {
 
       {isPending && (
         <div className="space-y-3">
-          <Button className="w-full" onClick={() => acceptMutation.mutate()} disabled={acceptMutation.isPending}>
+          <Button
+            className="w-full bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 hover:shadow-md"
+            onClick={() => acceptMutation.mutate()}
+            disabled={acceptMutation.isPending}
+          >
             <CheckCircle2 className="h-4 w-4 mr-2" />
             {acceptMutation.isPending ? 'Accepting…' : 'Accept assignment'}
           </Button>
           {!showDeclineForm ? (
-            <Button variant="outline" className="w-full" onClick={() => setShowDeclineForm(true)}>
+            <Button
+              variant="outline"
+              className="w-full border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 hover:text-red-800"
+              onClick={() => setShowDeclineForm(true)}
+            >
               <XCircle className="h-4 w-4 mr-2" /> Decline
             </Button>
           ) : (
-            <Card className="border-red-200">
+            <Card className="border-red-200 bg-red-50/30 transition-[border-color,box-shadow] duration-200 ease-out hover:border-red-300 hover:shadow-md">
               <CardContent className="py-4 space-y-3">
                 <div className="space-y-2">
                   <Label>Reason for declining (optional)</Label>
@@ -290,7 +303,11 @@ export default function AssignmentDetailPage() {
       )}
 
       {isAccepted && (
-        <Button className="w-full" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}>
+        <Button
+          className="w-full bg-amber-500 text-white shadow-sm hover:bg-amber-600 hover:shadow-md"
+          onClick={() => startMutation.mutate()}
+          disabled={startMutation.isPending}
+        >
           <Play className="h-4 w-4 mr-2" />
           {startMutation.isPending ? 'Starting…' : 'Mark as in progress'}
         </Button>
@@ -299,11 +316,14 @@ export default function AssignmentDetailPage() {
       {isInProgress && (
         <div className="space-y-3">
           {!showCompleteForm ? (
-            <Button className="w-full" onClick={() => setShowCompleteForm(true)}>
+            <Button
+              className="w-full bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 hover:shadow-md"
+              onClick={() => setShowCompleteForm(true)}
+            >
               <CheckCircle2 className="h-4 w-4 mr-2" /> Mark as completed
             </Button>
           ) : (
-            <Card className="border-emerald-200">
+            <Card className="border-emerald-200 bg-emerald-50/30 transition-[border-color,box-shadow] duration-200 ease-out hover:border-emerald-300 hover:shadow-md">
               <CardContent className="py-4 space-y-3">
                 <div className="space-y-2">
                   <Label>Completion notes (optional)</Label>
@@ -315,7 +335,7 @@ export default function AssignmentDetailPage() {
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" className="flex-1"
+                  <Button size="sm" className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700"
                     onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending}>
                     {completeMutation.isPending ? 'Saving…' : 'Submit completion'}
                   </Button>

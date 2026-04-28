@@ -47,6 +47,17 @@ const TABS: { value: AssignmentStatus | 'active' | 'all'; label: string }[] = [
   { value: 'all',            label: 'All' },
 ];
 
+const CARD_HOVER_STYLES: Record<AssignmentStatus, string> = {
+  pending_accept: 'hover:border-yellow-300 hover:bg-yellow-50/35',
+  accepted:       'hover:border-blue-300 hover:bg-blue-50/35',
+  declined:       'hover:border-red-300 hover:bg-red-50/35',
+  in_progress:    'hover:border-amber-300 hover:bg-amber-50/35',
+  completed:      'hover:border-emerald-300 hover:bg-emerald-50/35',
+  cancelled:      'hover:border-zinc-300 hover:bg-zinc-50/50',
+  no_show:        'hover:border-red-300 hover:bg-red-50/35',
+  expired:        'hover:border-slate-300 hover:bg-slate-50/50',
+};
+
 function isDeadlineSoon(deadline: Date): boolean {
   const diff = deadline.getTime() - new Date().getTime();
   return diff > 0 && diff < 5 * 60 * 1000;
@@ -59,7 +70,7 @@ function AssignmentCard({ assignment }: { assignment: Assignment }) {
 
   return (
     <Link href={`/assignments/${assignment.id}`}>
-      <Card className={`hover:border-primary/40 transition-colors cursor-pointer group ${isPending ? 'border-yellow-300' : ''}`}>
+      <Card className={`cursor-pointer group transition-[background-color,border-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md ${CARD_HOVER_STYLES[assignment.status]} ${isPending ? 'border-yellow-300' : ''}`}>
         <CardContent className="py-4 px-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">

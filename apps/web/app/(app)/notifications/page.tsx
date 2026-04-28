@@ -26,7 +26,7 @@ export default function NotificationsPage() {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 w-full max-w-2xl">
       <PageHeader
         title="Notifications"
         subtitle={unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
@@ -51,7 +51,7 @@ export default function NotificationsPage() {
           {notifications.map((n) => (
             <Card
               key={n.id}
-              className={`transition-colors ${!n.read ? 'border-primary/30 bg-primary/5' : ''}`}
+              className={`transition-all hover:shadow-sm ${!n.read ? 'border-primary/30 bg-primary/5 hover:-translate-y-0.5' : 'hover:border-muted-foreground/20'}`}
             >
               <CardContent className="py-4 flex items-start gap-3">
                 <div className={`mt-0.5 p-1.5 rounded-full shrink-0 ${!n.read ? 'bg-primary/10' : 'bg-muted'}`}>

@@ -77,7 +77,7 @@ export function SubmissionForm() {
   }
 
   return (
-    <Card className="max-w-2xl">
+    <Card className="w-full max-w-2xl transition-[border-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md">
       <CardHeader>
         <CardTitle>Report a Need</CardTitle>
         <CardDescription>
@@ -128,7 +128,11 @@ export function SubmissionForm() {
             </div>
           )}
 
-          <Button type="submit" disabled={mutation.isPending} className="w-full sm:w-auto">
+          <Button
+            type="submit"
+            disabled={mutation.isPending}
+            className="w-full bg-teal-600 text-white shadow-sm transition-[background-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:bg-teal-700 hover:shadow-md sm:w-auto"
+          >
             {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {mutation.isPending ? 'Submitting…' : 'Submit Report'}
           </Button>

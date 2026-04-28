@@ -52,6 +52,45 @@ const STATUS_FILTERS: { value: NeedStatus | 'all'; label: string }[] = [
   { value: 'completed',       label: 'Completed' },
 ];
 
+const STATUS_FILTER_STYLES: Record<NeedStatus | 'all', { active: string; hover: string }> = {
+  all: {
+    active: 'border-teal-500 bg-teal-500 text-white',
+    hover: 'hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700',
+  },
+  pending_review: {
+    active: 'border-amber-500 bg-amber-500 text-white',
+    hover: 'hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700',
+  },
+  published: {
+    active: 'border-sky-500 bg-sky-500 text-white',
+    hover: 'hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700',
+  },
+  matching_complete: {
+    active: 'border-violet-500 bg-violet-500 text-white',
+    hover: 'hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700',
+  },
+  assigned: {
+    active: 'border-indigo-500 bg-indigo-500 text-white',
+    hover: 'hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700',
+  },
+  in_progress: {
+    active: 'border-orange-500 bg-orange-500 text-white',
+    hover: 'hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700',
+  },
+  completed: {
+    active: 'border-emerald-500 bg-emerald-500 text-white',
+    hover: 'hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700',
+  },
+  cancelled: {
+    active: 'border-zinc-500 bg-zinc-500 text-white',
+    hover: 'hover:border-zinc-200 hover:bg-zinc-50 hover:text-zinc-700',
+  },
+  expired: {
+    active: 'border-slate-500 bg-slate-500 text-white',
+    hover: 'hover:border-slate-200 hover:bg-slate-50 hover:text-slate-700',
+  },
+};
+
 const URGENCY_FILTERS: { value: Urgency | 'all'; label: string }[] = [
   { value: 'all',      label: 'All urgencies' },
   { value: 'critical', label: '🔴 Critical' },
@@ -66,7 +105,7 @@ function NeedCard({ need }: { need: Need }) {
 
   return (
     <Link href={`/needs/${need.id}`}>
-      <Card className="hover:border-primary/40 transition-colors cursor-pointer group">
+      <Card className="hover:border-primary/40 hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group">
         <CardContent className="py-4 px-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
@@ -180,10 +219,10 @@ function NeedsPageContent() {
             <button
               key={f.value}
               onClick={() => setStatusFilter(f.value as NeedStatus | 'all')}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium shadow-none transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-out hover:-translate-y-px hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                 statusFilter === f.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  ? STATUS_FILTER_STYLES[f.value].active
+                  : `border-transparent bg-transparent text-muted-foreground ${STATUS_FILTER_STYLES[f.value].hover}`
               }`}
             >
               {f.label}
@@ -192,24 +231,24 @@ function NeedsPageContent() {
         </div>
 
         {/* Urgency + search row */}
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-3 items-center flex-wrap">
           <select
             value={urgencyFilter}
             onChange={(e) => setUrgencyFilter(e.target.value as Urgency | 'all')}
-            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm transition-[background-color,border-color] duration-200 ease-out hover:border-emerald-300 hover:bg-emerald-50/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             {URGENCY_FILTERS.map((f) => (
               <option key={f.value} value={f.value}>{f.label}</option>
             ))}
           </select>
 
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <div className="group relative flex-1 min-w-[180px] max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors duration-200 ease-out group-hover:text-sky-600" />
             <Input
               placeholder="Search needs…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-9"
+              className="h-9 pl-8 transition-[background-color,border-color] duration-200 ease-out hover:border-sky-300 hover:bg-sky-50/40"
             />
           </div>
         </div>

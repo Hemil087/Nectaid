@@ -148,7 +148,7 @@ export default function MyProfilePage() {
       />
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardContent className="py-4 text-center">
             <p className="text-2xl font-semibold">{profile.total_tasks_completed}</p>
@@ -188,7 +188,7 @@ export default function MyProfilePage() {
           <Card>
             <CardHeader><CardTitle className="text-base">Personal details</CardTitle></CardHeader>
             <CardContent className="text-sm">
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-1">
                 <span className="text-muted-foreground">Full name</span>
                 <span>{profile.full_name || '—'}</span>
               </div>
@@ -213,15 +213,15 @@ export default function MyProfilePage() {
           <Card>
             <CardHeader><CardTitle className="text-base">Location & availability</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-1">
                 <span className="text-muted-foreground">Home address</span>
-                <span>{profile.home_address || '—'}</span>
+                <span className="text-right">{profile.home_address || '—'}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-1">
                 <span className="text-muted-foreground">Max travel</span>
                 <span>{profile.max_travel_km} km</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-1">
                 <span className="text-muted-foreground">Language</span>
                 <span>{LANGUAGES.find((l) => l.value === profile.preferred_language)?.label ?? profile.preferred_language}</span>
               </div>
@@ -368,7 +368,7 @@ export default function MyProfilePage() {
             <p className="text-sm text-destructive">Failed to save. Please try again.</p>
           )}
 
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <Button onClick={handleSave} disabled={mutation.isPending} className="flex-1">
               {mutation.isPending ? 'Saving…' : 'Save changes'}
             </Button>

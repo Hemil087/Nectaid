@@ -30,7 +30,7 @@ function StatCard({
   highlight?: boolean;
 }) {
   return (
-    <Card className={highlight ? 'border-red-200 bg-red-50/50' : ''}>
+    <Card className={`transition-all hover:shadow-md hover:-translate-y-0.5 ${highlight ? 'border-red-200 bg-red-50/50' : ''}`}>
       <CardContent className="py-5 flex items-center gap-4">
         <div className={`p-2 rounded-lg ${highlight ? 'bg-red-100' : 'bg-muted'}`}>
           <Icon className={`h-5 w-5 ${highlight ? 'text-red-600' : 'text-muted-foreground'}`} />
@@ -104,7 +104,7 @@ export default function DashboardPage() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {statsLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <Card key={i}>
@@ -224,7 +224,7 @@ export default function DashboardPage() {
             {events.map((event) => (
               <div
                 key={event.id}
-                className={`py-3 flex items-start gap-3 ${!event.read ? 'bg-primary/5 -mx-6 px-6' : ''}`}
+                className={`py-3 flex items-start gap-3 rounded transition-colors hover:bg-muted/40 ${!event.read ? 'bg-primary/5 -mx-6 px-6' : ''}`}
               >
                 <div className={`p-1.5 rounded-full shrink-0 mt-0.5 ${!event.read ? 'bg-primary/10' : 'bg-muted'}`}>
                   <Bell className={`h-3 w-3 ${!event.read ? 'text-primary' : 'text-muted-foreground'}`} />
