@@ -174,7 +174,27 @@ export default function AssignmentDetailPage() {
           </CardContent>
         </Card>
       )}
-
+      {/* Location map */}
+      {need?.location_lat && need?.location_lng && (
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-muted-foreground" /> Location
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <iframe
+              title="Task location"
+              width="100%"
+              height="240"
+              style={{ border: 0, display: 'block' }}
+              loading="lazy"
+              allowFullScreen
+              src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&q=${need.location_lat},${need.location_lng}&zoom=14`}
+            />
+          </CardContent>
+        </Card>
+      )}
       {/* Logistics */}
       <Card className={INFO_CARD_HOVER}>
         <CardHeader className="pb-2">

@@ -176,6 +176,7 @@
 - [x] Empty states on all list pages
 - [x] Notification bell with live unread badge
 - [ ] Wire `needs-heatmap.tsx` into dashboard page (component built, needs wiring)
+- [x] Google Maps embed on need detail + assignment detail pages (read-only)
 
 ---
 
@@ -239,6 +240,7 @@
 | Frontend — i18n infrastructure (en/hi/gu message files) | ✅ Done |
 | Frontend — auth role-based redirect | ✅ Done |
 | Frontend — rematch button on need detail page | ✅ Done |
+| Google Maps embed on detail pages | ✅ Done |
 | Reports PDF worker + /reports/weekly.pdf | ⏭️ Skipped (demo: show JSON report) |
 | i18n useTranslations() in components | ⏭️ Skipped (infrastructure ready, post-demo) |
 | Needs heatmap wired into dashboard | ⏳ Pending (component built) |
