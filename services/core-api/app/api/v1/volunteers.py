@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Response, status
+from geoalchemy2.shape import to_shape
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 
 async def _generate_volunteer_embedding(user_id: str) -> None:
-    """BackgroundTask: generate skill embedding and store on volunteer profile."""
     from app.services.embedding import embed_need_text
     async with SessionLocal() as db:
         try:
@@ -49,7 +49,19 @@ def _normalize_role(claims_role: object) -> str:
     return role if role in {"volunteer", "coordinator", "admin"} else "volunteer"
 
 
+def _parse_home_location(location) -> tuple[float | None, float | None]:
+    """Extract (lat, lng) from a GeoAlchemy2 WKBElement."""
+    if location is None:
+        return None, None
+    try:
+        point = to_shape(location)
+        return point.y, point.x
+    except Exception:
+        return None, None
+
+
 def _volunteer_response(user: User, profile: VolunteerProfile) -> VolunteerResponse:
+    lat, lng = _parse_home_location(profile.home_location)
     return VolunteerResponse(
         id=user.id,
         firebase_uid=user.firebase_uid,
@@ -66,6 +78,8 @@ def _volunteer_response(user: User, profile: VolunteerProfile) -> VolunteerRespo
         skills_text=profile.skills_text,
         certifications=profile.certifications,
         home_address=profile.home_address,
+        home_location_lat=lat,
+        home_location_lng=lng,
         max_travel_km=profile.max_travel_km,
         verified=profile.verified,
         verification_docs=profile.verification_docs,
@@ -131,12 +145,24 @@ async def create_volunteer(
             detail="Volunteer profile already exists",
         )
 
+    # Resolve home_location: explicit pin takes priority, else geocode address
+    home_location_wkt: str | None = None
+    if payload.home_location is not None:
+        home_location_wkt = f"SRID=4326;POINT({payload.home_location.lng} {payload.home_location.lat})"
+    elif payload.home_address:
+        from app.services.needs_service import geocode_location_hint
+        coords = await geocode_location_hint(payload.home_address)
+        if coords:
+            lat, lng = coords
+            home_location_wkt = f"SRID=4326;POINT({lng} {lat})"
+
     profile = VolunteerProfile(
         user_id=user.id,
         skills=payload.skills,
         home_address=payload.home_address,
         max_travel_km=payload.max_travel_km,
         notification_prefs=payload.notification_prefs,
+        home_location=home_location_wkt,
     )
     db.add(profile)
     await db.flush()
@@ -164,7 +190,6 @@ async def get_my_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Volunteer profile not found",
         )
-
     return _volunteer_response(current_user, profile)
 
 
@@ -212,22 +237,33 @@ async def patch_my_profile(
                 skills_changed = True
             setattr(profile, key, value)
 
+    # Handle explicit location pin from map picker
+    if "home_location" in body:
+        loc = body["home_location"]
+        if loc is not None:
+            profile.home_location = f"SRID=4326;POINT({loc['lng']} {loc['lat']})"
+        else:
+            # No pin set — try geocoding the address if it was updated
+            address = body.get("home_address") or profile.home_address
+            if address:
+                from app.services.needs_service import geocode_location_hint
+                coords = await geocode_location_hint(address)
+                if coords:
+                    lat, lng = coords
+                    profile.home_location = f"SRID=4326;POINT({lng} {lat})"
+
     current_user.updated_at = now
     profile.updated_at = now
 
-    # Re-generate skill embedding asynchronously when skills change
     if skills_changed:
         from app.services.embedding import embed_need_text
-        import asyncio
         skills_text = " | ".join(profile.skills or [])
         if skills_text.strip():
             profile.skills_text = skills_text
             try:
                 profile.skills_embedding = await embed_need_text(skills_text)
             except Exception as exc:
-                # Non-fatal — embedding can be regenerated later
-                import logging
-                logging.getLogger(__name__).warning("skills embedding failed: %s", exc)
+                logger.warning("skills embedding failed: %s", exc)
 
     await db.commit()
     await db.refresh(current_user)
@@ -252,7 +288,6 @@ async def get_my_assignments(
     )
     assignments = list(result.scalars().all())
 
-    # Fetch associated needs in one query
     need_ids = list({a.need_id for a in assignments})
     needs_map: dict[uuid.UUID, Need] = {}
     if need_ids:

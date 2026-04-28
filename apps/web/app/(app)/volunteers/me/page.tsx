@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Pencil, X, CheckCircle2, Star } from 'lucide-react';
+import { LocationMapPicker } from '@/components/needs/location-map-picker';
 import type { VolunteerProfile } from '@/lib/types/api';
 
 const SKILL_SUGGESTIONS = [
@@ -35,11 +36,11 @@ export default function MyProfilePage() {
     queryFn: () => apiFetch('/volunteers/me'),
   });
 
-  // Edit state — initialised when user opens edit mode
   const [fullName, setFullName] = useState('');
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState('');
   const [homeAddress, setHomeAddress] = useState('');
+  const [locationPin, setLocationPin] = useState<{ lat: number; lng: number } | null>(null);
   const [maxTravelKm, setMaxTravelKm] = useState(20);
   const [preferredLanguage, setPreferredLanguage] = useState('en');
   const [emailNotif, setEmailNotif] = useState(true);
@@ -55,6 +56,11 @@ export default function MyProfilePage() {
     setFullName(profile.full_name ?? '');
     setSkills(profile.skills ?? []);
     setHomeAddress(profile.home_address ?? '');
+    setLocationPin(
+      (profile as any).home_location_lat != null && (profile as any).home_location_lng != null
+        ? { lat: (profile as any).home_location_lat, lng: (profile as any).home_location_lng }
+        : null,
+    );
     setMaxTravelKm(profile.max_travel_km);
     setPreferredLanguage(profile.preferred_language);
     setEmailNotif(profile.notification_prefs?.email ?? true);
@@ -86,6 +92,7 @@ export default function MyProfilePage() {
       full_name: fullName || undefined,
       skills,
       home_address: homeAddress || null,
+      home_location: locationPin ? { lat: locationPin.lat, lng: locationPin.lng } : null,
       max_travel_km: maxTravelKm,
       preferred_language: preferredLanguage,
       notification_prefs: { email: emailNotif, in_app: inAppNotif },
@@ -179,9 +186,7 @@ export default function MyProfilePage() {
       {!editing && (
         <>
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Personal details</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Personal details</CardTitle></CardHeader>
             <CardContent className="text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Full name</span>
@@ -191,9 +196,7 @@ export default function MyProfilePage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Skills</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Skills</CardTitle></CardHeader>
             <CardContent>
               {profile.skills?.length ? (
                 <div className="flex flex-wrap gap-2">
@@ -208,9 +211,7 @@ export default function MyProfilePage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Location & availability</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Location & availability</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Home address</span>
@@ -228,9 +229,7 @@ export default function MyProfilePage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Notification preferences</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Notification preferences</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Email</span>
@@ -249,9 +248,7 @@ export default function MyProfilePage() {
       {editing && (
         <>
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Personal details</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Personal details</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Full name</Label>
@@ -265,9 +262,7 @@ export default function MyProfilePage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Skills</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Skills</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Add skill</Label>
@@ -285,12 +280,8 @@ export default function MyProfilePage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {SKILL_SUGGESTIONS.filter((s) => !skills.includes(s)).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => addSkill(s)}
-                    className="text-xs px-2 py-1 rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                  >
+                  <button key={s} type="button" onClick={() => addSkill(s)}
+                    className="text-xs px-2 py-1 rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors">
                     + {s}
                   </button>
                 ))}
@@ -316,9 +307,7 @@ export default function MyProfilePage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Location & availability</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Location & availability</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Home address</Label>
@@ -328,22 +317,31 @@ export default function MyProfilePage() {
                   onChange={(e) => setHomeAddress(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Max travel: <span className="font-semibold">{maxTravelKm} km</span></Label>
-                <input
-                  type="range" min={1} max={200}
-                  value={maxTravelKm}
-                  onChange={(e) => setMaxTravelKm(Number(e.target.value))}
-                  className="w-full accent-primary"
+
+              {/* Map pin */}
+              <div className="space-y-1.5">
+                <Label>Pin your location</Label>
+                <LocationMapPicker
+                  value={locationPin}
+                  onChange={setLocationPin}
+                  className="h-64 w-full"
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label>Max travel: <span className="font-semibold">{maxTravelKm} km</span></Label>
+                <input type="range" min={1} max={200} value={maxTravelKm}
+                  onChange={(e) => setMaxTravelKm(Number(e.target.value))}
+                  className="w-full accent-primary" />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>1 km</span><span>200 km</span>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>Preferred language</Label>
-                <select
-                  value={preferredLanguage}
-                  onChange={(e) => setPreferredLanguage(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
+                <select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                   {LANGUAGES.map((l) => (
                     <option key={l.value} value={l.value}>{l.label}</option>
                   ))}
@@ -353,9 +351,7 @@ export default function MyProfilePage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Notification preferences</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle className="text-base">Notification preferences</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" checked={emailNotif} onChange={(e) => setEmailNotif(e.target.checked)} className="h-4 w-4 accent-primary" />
