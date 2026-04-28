@@ -27,10 +27,10 @@ export function SubmissionProgress({ submissionId, status, onSubmitAnother }: Pr
         </div>
       </CardContent>
       <CardFooter className="flex flex-col gap-2 pb-6">
-        <Link href="/submissions" className="w-full">
+        <Link href="/needs" className="w-full">
           <Button variant="outline" className="w-full">
             <FileText className="mr-2 h-4 w-4" />
-            View my submissions
+            View other Needs
           </Button>
         </Link>
         <Button onClick={onSubmitAnother} className="w-full">
