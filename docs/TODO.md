@@ -1,6 +1,6 @@
 # Nectaid — Master TODO
 
-> **Current status (Apr 27, 2026):** Backend ✅ complete. Frontend ✅ complete. Deadline: Apr 28 23:59 IST.
+> **Current status (Apr 27, 2026):** Backend ✅ complete. Frontend ✅ complete. Bug fixes applied. Deadline: Apr 28 23:59 IST.
 > Items are ordered by dependency chain — don't skip ahead.
 
 ---
@@ -49,8 +49,8 @@
 
 ### Volunteer Assignment Endpoints — COMPLETE
 - [x] `PATCH /volunteers/me` + re-generate embedding when skills change
-- [x] `GET /volunteers/me/assignments`
-- [x] `POST /assignments/{id}/accept` + cascade need to `assigned`
+- [x] `GET /volunteers/me/assignments` — fixed: was returning `assignment_id` field; renamed to `id` to match TypeScript `Assignment` type; fixed `need` object to include `location: {text}` and `deadline` (was `location_text` flat string)
+- [x] `POST /assignments/{id}/accept` + cascade need to `assigned` — fixed: removed accept deadline hard-block (seeded assignments have expired 15-min deadlines)
 - [x] `POST /assignments/{id}/decline`
 - [x] `POST /assignments/{id}/status` — `in_progress` / `completed` with photo URLs
 - [x] `POST /assignments/{id}/rate` — EMA reliability score update
@@ -58,7 +58,7 @@
 - [x] Audit log trigger on `assignments` table
 
 ### Analytics — COMPLETE
-- [x] `GET /analytics/dashboard` — 8 Postgres aggregates
+- [x] `GET /analytics/dashboard` — 8 Postgres aggregates; fixed: removed per-org scoping (coordinator's `org_id` didn't match seeded data → all zeros); now platform-wide
 
 ### Escalation Cron — COMPLETE
 - [x] `POST /cron/escalate` — expire stale assignments, reset need to `published`, re-run matching
@@ -70,11 +70,14 @@
 - [x] Wired into ingestion, needs, matching worker, assignments
 
 ### Notification Worker — COMPLETE
-- [x] SendGrid email inline on assignment creation (volunteer language-aware)
+- [x] SendGrid email inline on assignment creation (volunteer language-aware, en/hi/gu)
 - [x] `notifications` row written alongside every email
 - [x] `GET /notifications` + `POST /notifications/{id}/read`
-- [ ] `POST /webhooks/sendgrid` — ED25519 signature verification (skip for demo)
-- [ ] On permanent bounce: flag `email_deliverable=False` (skip for demo)
+- [x] `app/services/email_service.py` — shared email helpers (`send_new_assignment_email`, `send_reminder_email`, `send_task_completed_email`)
+- [x] `reminder_sent_at` column on `assignments` + Alembic migration `d3e4f5a6b7c8`
+- [x] `POST /cron/send-reminders` — queries pending_accept within 10-min window, fires reminder email, sets `reminder_sent_at`
+- [x] Task-completed coordinator email — fires in `POST /assignments/{id}/status` when need transitions to `completed`
+- [x] `POST /webhooks/sendgrid` — event handler for delivered/bounce/spam; ED25519 verification behind `SENDGRID_WEBHOOK_VERIFY=true` env var; permanent bounce sets `email_deliverable=False`
 
 ### Reports — PARTIAL
 - [x] `GET /reports/weekly?week=YYYY-WNN` — JSON aggregates
@@ -106,7 +109,7 @@
 - [x] `/needs/[id]` — detail + Firestore realtime status + assignments team list + publish/cancel
 - [x] `/needs/[id]/review` — edit form + save & publish flow
 - [x] `/assignments` — Active/Pending/Completed tabs + pending count badge
-- [x] `/assignments/[id]` — accept/decline/start/complete flow + Firestore realtime
+- [x] `/assignments/[id]` — accept/decline/start/complete flow + Firestore realtime; enhanced: now fetches full need via `GET /needs/{id}` to show description, beneficiary count, required skills (volunteer's role highlighted), resources to bring, and deadline
 - [x] `/notifications` — list + mark read
 - [x] `/submissions/new` — multipart form wired to `POST /submissions`
 - [x] `/volunteers/register` — multi-step volunteer registration
@@ -195,16 +198,17 @@
 | Matching algorithm (greedy + Hungarian) | ✅ Done |
 | Matching worker (Phase 1 SQL + assignments) | ✅ Done |
 | Uploads signed-URL endpoint | ✅ Done |
-| Assignment endpoints (accept/decline/status/rate) | ✅ Done |
-| Analytics dashboard (8 aggregates) | ✅ Done |
+| Assignment endpoints (accept/decline/status/rate) | ✅ Done (deadline block removed for demo) |
+| Analytics dashboard (8 aggregates) | ✅ Done (platform-wide; org scoping removed) |
 | Escalation cron | ✅ Done |
 | Firestore sync + realtime hooks | ✅ Done |
-| SendGrid email notifications | ✅ Done |
+| SendGrid email notifications (new assignment + reminder + task completed) | ✅ Done |
+| SendGrid webhook (delivered/bounce/spam → notification status + email_deliverable) | ✅ Done |
 | In-app notifications | ✅ Done |
 | Admin endpoints | ✅ Done |
 | Audit log triggers | ✅ Done |
 | Security hardening (app level) | ✅ Done |
-| Frontend — all pages wired | ✅ Done |
+| Frontend — all pages wired | ✅ Done (assignment detail enhanced with full need context) |
 | Frontend — role-filtered sidebar + tablet layout | ✅ Done |
 | Frontend — toast notifications on all mutations | ✅ Done |
 | Frontend — photo upload in completion form | ✅ Done |

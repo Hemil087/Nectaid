@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   MapPin, Users, Clock, AlertTriangle, CheckCircle2,
-  ArrowLeft, Pencil, Send, X
+  ArrowLeft, Pencil, Send, X, RefreshCw
 } from 'lucide-react';
 import type { Need, Assignment } from '@/lib/types/api';
 import type { NeedStatus, Urgency, AssignmentStatus } from '@/lib/types/enums';
@@ -128,6 +128,14 @@ export default function NeedDetailPage() {
     },
   });
 
+  const rematchMutation = useMutation({
+    mutationFn: () => apiFetch(`/needs/${id}/rematch`, { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['need', id] });
+      queryClient.invalidateQueries({ queryKey: ['needs'] });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-6 max-w-3xl mx-auto">
@@ -153,6 +161,7 @@ export default function NeedDetailPage() {
   }
 
   const canPublish = liveStatus === 'pending_review';
+  const canRematch = ['published', 'matching_complete', 'assigned', 'in_progress'].includes(liveStatus);
   const canCancel = !['completed', 'cancelled', 'expired'].includes(liveStatus);
   const deadline = need.deadline ? new Date(need.deadline) : null;
 
@@ -179,6 +188,17 @@ export default function NeedDetailPage() {
               <Link href={`/needs/${id}/review`}>
                 <Pencil className="h-4 w-4 mr-2" /> Edit
               </Link>
+            </Button>
+          )}
+          {canRematch && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => rematchMutation.mutate()}
+              disabled={rematchMutation.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${rematchMutation.isPending ? 'animate-spin' : ''}`} />
+              {rematchMutation.isPending ? 'Matching…' : 'Re-run matching'}
             </Button>
           )}
           {canCancel && (

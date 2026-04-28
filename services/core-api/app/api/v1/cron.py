@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, status
@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import SessionLocal
 from app.models import Need
 from app.models.assignment import Assignment
+from app.models.user import User
+from app.services.email_service import send_reminder_email
 from app.services.matching_worker import run_matching
 
 logger = logging.getLogger(__name__)
@@ -158,4 +160,81 @@ async def escalate_stale_assignments(
     return {
         "expired":          expired_count,
         "rematched_needs":  rematched_need_ids,
+    }
+
+
+# ── POST /cron/send-reminders ──────────────────────────────────────────────
+
+@router.post("/send-reminders", status_code=status.HTTP_200_OK)
+async def send_reminders(
+    authorization: str | None = Header(None),
+) -> dict[str, Any]:
+    """
+    Find pending_accept assignments whose accept_deadline is within 10 minutes,
+    haven't had a reminder sent yet, and fire a reminder email to each volunteer.
+
+    Called by Cloud Scheduler every 5 minutes in production.
+    Call manually in dev:
+        POST /api/v1/cron/send-reminders  Authorization: Bearer <CRON_SECRET>
+    """
+    _verify_cron_auth(authorization)
+
+    now = datetime.now(timezone.utc)
+    window_end = now + timedelta(minutes=10)
+    reminded: list[str] = []
+    skipped: list[str] = []
+
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(Assignment).where(
+                Assignment.status == "pending_accept",
+                Assignment.accept_deadline >= now,
+                Assignment.accept_deadline <= window_end,
+                Assignment.reminder_sent_at.is_(None),
+            )
+        )
+        pending = list(result.scalars().all())
+
+        if not pending:
+            logger.info("send_reminders: no assignments in reminder window")
+            return {"reminded": 0, "assignment_ids": []}
+
+        for a in pending:
+            try:
+                volunteer = await db.get(User, a.volunteer_id)
+                if not volunteer:
+                    skipped.append(str(a.id))
+                    continue
+
+                need = await db.get(Need, a.need_id)
+                need_title = need.title if need else "your assignment"
+
+                deadline_str = (
+                    a.accept_deadline.strftime("%b %d, %H:%M UTC")
+                    if a.accept_deadline else "soon"
+                )
+
+                await send_reminder_email(
+                    db,
+                    volunteer=volunteer,
+                    assignment_id=a.id,
+                    need_title=need_title,
+                    accept_deadline_str=deadline_str,
+                )
+
+                a.reminder_sent_at = now
+                reminded.append(str(a.id))
+
+            except Exception as exc:
+                logger.error("send_reminders: failed for assignment=%s: %s", a.id, exc)
+                skipped.append(str(a.id))
+
+        if reminded:
+            await db.commit()
+            logger.info("send_reminders: sent %d reminders", len(reminded))
+
+    return {
+        "reminded":       len(reminded),
+        "skipped":        len(skipped),
+        "assignment_ids": reminded,
     }

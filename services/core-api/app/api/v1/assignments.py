@@ -24,6 +24,7 @@ from app.dependencies import get_current_user, require_role
 from app.models import Need, User
 from app.models.assignment import Assignment
 from app.models.volunteer import VolunteerProfile
+from app.services.email_service import send_task_completed_email
 from app.services.firestore_sync import sync_firestore
 
 logger = logging.getLogger(__name__)
@@ -235,6 +236,28 @@ async def update_assignment_status(
 
     await sync_firestore("assignments", str(assignment_id), db)
     logger.info("assignment_status id=%s -> %s volunteer=%s", assignment_id, new_status, current_user.id)
+
+    # When a task is completed, notify the coordinator so they can rate the volunteer
+    if new_status == "completed":
+        try:
+            need = await db.get(Need, a.need_id)
+            if need and need.created_by:
+                coordinator = await db.get(User, need.created_by)
+                if coordinator:
+                    photo_count = len(a.completion_photo_urls or [])
+                    await send_task_completed_email(
+                        db,
+                        coordinator=coordinator,
+                        need_id=need.id,
+                        need_title=need.title,
+                        volunteer_name=current_user.full_name or current_user.email or "volunteer",
+                        completion_notes=a.completion_notes,
+                        photo_count=photo_count,
+                    )
+                    await db.commit()
+        except Exception as exc:
+            logger.error("task_completed_email failed assignment=%s: %s", assignment_id, exc)
+
     return _serialize(a)
 
 

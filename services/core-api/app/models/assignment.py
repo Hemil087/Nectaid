@@ -82,6 +82,7 @@ class Assignment(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     coordinator_rating: Mapped[int | None] = mapped_column(Integer)
     volunteer_feedback: Mapped[str | None] = mapped_column(Text)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completion_notes: Mapped[str | None] = mapped_column(Text)
     completion_photo_urls: Mapped[list[str] | None] = mapped_column(ARRAY(Text()))
     created_at: Mapped[datetime] = mapped_column(

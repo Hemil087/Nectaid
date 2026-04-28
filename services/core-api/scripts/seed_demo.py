@@ -16,6 +16,7 @@ Firebase note:
         DEMO_ADMIN_UID=<firebase uid>
         DEMO_VOLUNTEER1_UID=<firebase uid>
         DEMO_VOLUNTEER2_UID=<firebase uid>
+        DEMO_VOLUNTEER3_UID=<firebase uid>
 """
 from __future__ import annotations
 
@@ -217,6 +218,7 @@ def seed(session: Session) -> None:
     vol_uids = [
         os.getenv("DEMO_VOLUNTEER1_UID", "VFSp3H9EcoRFihbxpUhPmaHoc7Y2"),
         os.getenv("DEMO_VOLUNTEER2_UID", f"demo-vol-{uuid.uuid4().hex[:8]}"),
+        os.getenv("DEMO_VOLUNTEER3_UID", "MB4P0NY8oWSOSog29aTbAMo4GLA2"),
     ]
     volunteers: list[User] = []
 
@@ -367,6 +369,7 @@ def seed(session: Session) -> None:
     print(f"  Admin firebase_uid       : {admin.firebase_uid}")
     print(f"  Volunteer 1 firebase_uid : {volunteers[0].firebase_uid}")
     print(f"  Volunteer 2 firebase_uid : {volunteers[1].firebase_uid}")
+    print(f"  Volunteer 3 firebase_uid : {volunteers[2].firebase_uid}")
     print("\n  → Update these in Firebase Auth console if you want to log in as these users.")
 
 

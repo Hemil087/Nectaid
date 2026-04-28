@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -208,6 +208,42 @@ async def publish_need(
             event_type="need_published",
             extra={"need_id": str(need.id), "title": need.title, "urgency": need.urgency},
         )
+
+    return _serialize_need(need)
+
+
+@router.post("/{need_id}/rematch", response_model=NeedResponse, status_code=status.HTTP_200_OK)
+async def rematch_need(
+    need_id: UUID,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(require_role("coordinator", "admin")),
+    db: AsyncSession = Depends(get_db),
+) -> NeedResponse:
+    need = await _get_need_or_404(db, need_id)
+
+    REMATCHABLE = {"published", "matching_complete", "assigned", "in_progress"}
+    if need.status not in REMATCHABLE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot re-run matching for a need with status '{need.status}'",
+        )
+
+    # Drop pending_accept assignments so those slots are open for fresh matching.
+    # Accepted/in_progress assignments are preserved — those volunteers stay on the team.
+    await db.execute(
+        delete(Assignment).where(
+            Assignment.need_id == need_id,
+            Assignment.status == "pending_accept",
+        )
+    )
+
+    need.status = "published"
+    need.updated_at = datetime.now(tz=timezone.utc)
+    await db.commit()
+    await db.refresh(need)
+
+    background_tasks.add_task(run_matching, str(need.id))
+    await sync_firestore("needs", str(need.id), db)
 
     return _serialize_need(need)
 
